@@ -29,7 +29,8 @@ other `FRIGLET_*` variable in the environment is a fatal startup error naming th
 | `FRIGLET_UI_ORACLE_URL` | per network (`https://oracle.setor.dev`, `https://signet.oracle.setor.dev`) | gRPC oracle; overridable later under Advanced |
 | `FRIGLET_UI_AUTH` | `password` (`gateway` on umbrel) | `password`, `gateway` (trust the platform's login), `none` (compose only; warning + banner) |
 | `FRIGLET_UI_PASSWORD` | — | plaintext initial password (compose); hashed into the data dir on first start |
-| `FRIGLET_UI_PASSWORD_FILE` | — | file holding the password (native installs and StartOS write it) |
+| `FRIGLET_UI_PASSWORD_FILE` | — | file holding the password (native installs, myNode and StartOS write it). Authoritative: re-read on every start, one trailing newline trimmed; when it differs from the stored hash the hash is replaced and all sessions end (this is how platform password resets work) |
+| `FRIGLET_UI_TRUSTED_PROXIES` | `127.0.0.1,::1` | comma-separated IPs/CIDRs whose `X-Forwarded-For` is trusted for the per-client login limit (myNode: `172.17.0.1`) |
 | `FRIGLET_UI_ELECTRUM_TCP` | `0.0.0.0:50031` | plaintext Electrum listener owned by friglet-ui; `off` disables |
 | `FRIGLET_UI_ELECTRUM_TLS` | `0.0.0.0:50032` | TLS Electrum listener (self-signed cert in data dir); `off` disables (StartOS) |
 | `FRIGLET_UI_PUBLIC_HOST` | request `Host` | LAN host shown on Connect (e.g. `umbrel.local`) |
