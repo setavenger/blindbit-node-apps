@@ -27,7 +27,7 @@ other `FRIGLET_*` variable in the environment is a fatal startup error naming th
 | `FRIGLET_UI_NETWORK` | required | `bitcoin`, `signet`, `testnet4`, `regtest`; anything else (e.g. Umbrel's `testnet` for testnet3) is the named state `unsupported-network`, not a restart loop |
 | `FRIGLET_UI_NODE` | required | Bitcoin P2P peer `host:port`; resolved to a literal IP on every friglet start |
 | `FRIGLET_UI_ORACLE_URL` | per network (`https://oracle.setor.dev`, `https://signet.oracle.setor.dev`) | gRPC oracle; overridable later under Advanced |
-| `FRIGLET_UI_AUTH` | `password` (`gateway` on umbrel) | `password`, `gateway` (trust the platform's login), `none` (compose only; warning + banner) |
+| `FRIGLET_UI_AUTH` | `password` (`gateway` on umbrel) | `password`, `gateway` (trust the platform's login; Umbrel only), `none` (compose only; warning + banner). StartOS uses `password` with a package-written `FRIGLET_UI_PASSWORD_FILE`, because port 8097 is reachable from other services without the StartOS proxy |
 | `FRIGLET_UI_PASSWORD` | — | plaintext initial password (compose); hashed into the data dir on first start |
 | `FRIGLET_UI_PASSWORD_FILE` | — | file holding the password (native installs, myNode and StartOS write it). Authoritative: re-read on every start, one trailing newline trimmed; when it differs from the stored hash the hash is replaced and all sessions end (this is how platform password resets work) |
 | `FRIGLET_UI_TRUSTED_PROXIES` | `127.0.0.1,::1` | comma-separated IPs/CIDRs whose `X-Forwarded-For` is trusted for the per-client login limit (myNode: `172.17.0.1`) |
@@ -52,7 +52,11 @@ Exit codes: 0 ok, 2 usage, 3 descriptor, 4 birthday, 5 network mismatch, 6 node 
 over; otherwise it stages the files under an exclusive `flock` on the data dir and reports
 "staged, verification pending". `--json` prints `{"ok":bool,"code":n,"state":..., "sp_address":...,"message":...}`.
 
-Other subcommands: `friglet-ui password set|reset` (reads stdin, ends all sessions),
+UI credentials (`ui-password`, the password hash, sessions) and the TLS certificate are not
+wallet data: `forget` and wallet replacement never touch them.
+
+Other subcommands: `friglet-ui password set|reset` (reads stdin, ends all sessions, works while
+the daemon runs),
 `friglet-ui status --json` (state id, heights; exit 0 healthy, 1 attention, 2 not configured),
 `friglet-ui health` (exit 0 only in `scanning`/`up-to-date`; for container healthchecks),
 `friglet-ui --version`, `friglet-ui self-test` (no network; checks the embedded assets and
@@ -80,5 +84,5 @@ crypto, used to prove arm64 binaries execute).
 | 8097 | friglet-ui (container port; loopback on native installs) |
 | 8098 | friglet-ui over HTTPS via nginx on RaspiBlitz and myNode |
 | 2104 | Umbrel app proxy port |
-| 8336 | RaspiBlitz bitcoind `whitebind=download@127.0.0.1:8336` for friglet |
+| 8337 | RaspiBlitz bitcoind `whitebind=download@127.0.0.1:8337` for friglet (8336 is BTCPay's whitebind on RaspiBlitz; a second bind on it stops bitcoind) |
 | 8095 | friglet HTTP API, loopback only, never published |
