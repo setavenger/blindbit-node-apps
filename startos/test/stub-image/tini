@@ -1,0 +1,4 @@
+#!/bin/sh
+# STUB tini: `tini -- cmd args…` → exec cmd args…
+[ "$1" = "--" ] && shift
+exec "$@"
