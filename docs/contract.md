@@ -24,7 +24,7 @@ other `FRIGLET_*` variable in the environment is a fatal startup error naming th
 | `FRIGLET_UI_PLATFORM` | `compose` | `umbrel`, `startos`, `raspiblitz`, `mynode`, `compose`; selects copy, endpoints and auth defaults |
 | `FRIGLET_UI_DATA_DIR` | `/data` | config, key, state, certs, `prev/`, UI secrets; created 0700 |
 | `FRIGLET_UI_LISTEN` | `0.0.0.0:8097` (image), `127.0.0.1:8097` (native) | web UI + JSON API |
-| `FRIGLET_UI_NETWORK` | required | `bitcoin`, `signet`, `testnet4`, `regtest` |
+| `FRIGLET_UI_NETWORK` | required | `bitcoin`, `signet`, `testnet4`, `regtest`; anything else (e.g. Umbrel's `testnet` for testnet3) is the named state `unsupported-network`, not a restart loop |
 | `FRIGLET_UI_NODE` | required | Bitcoin P2P peer `host:port`; resolved to a literal IP on every friglet start |
 | `FRIGLET_UI_ORACLE_URL` | per network (`https://oracle.setor.dev`, `https://signet.oracle.setor.dev`) | gRPC oracle; overridable later under Advanced |
 | `FRIGLET_UI_AUTH` | `password` (`gateway` on umbrel) | `password`, `gateway` (trust the platform's login), `none` (compose only; warning + banner) |
@@ -33,8 +33,8 @@ other `FRIGLET_*` variable in the environment is a fatal startup error naming th
 | `FRIGLET_UI_ELECTRUM_TCP` | `0.0.0.0:50031` | plaintext Electrum listener owned by friglet-ui; `off` disables |
 | `FRIGLET_UI_ELECTRUM_TLS` | `0.0.0.0:50032` | TLS Electrum listener (self-signed cert in data dir); `off` disables (StartOS) |
 | `FRIGLET_UI_PUBLIC_HOST` | request `Host` | LAN host shown on Connect (e.g. `umbrel.local`) |
-| `FRIGLET_UI_ONION_HOST` | — | onion hostname shown on Connect for the plaintext port |
-| `FRIGLET_UI_ALLOWED_HOSTS` | derived | extra Host/Origin values accepted for state-changing requests |
+| `FRIGLET_UI_ONION_HOST` | — | onion hostname shown on Connect for the plaintext port; empty string = unset (Umbrel exports `""` until Tor has written it) |
+| `FRIGLET_UI_ALLOWED_HOSTS` | derived | comma-separated extra `host[:port]` values accepted for state-changing requests. Default policy is same-origin: `Origin` (or `Referer`) must match the request's own `Host`, which covers Umbrel's gateway (forwards the browser Host unchanged: `umbrel.local:2104`, LAN IP, web onion) |
 | `FRIGLET_UI_FRIGLET_BIN` | `/usr/local/bin/friglet` (image), next to `friglet-ui` (native) | daemon binary |
 | `FRIGLET_UI_LOG` | `info` | friglet-ui log level |
 
@@ -61,8 +61,13 @@ crypto, used to prove arm64 binaries execute).
 
 - `/` web UI (static, embedded). All `/api/*` JSON. State-changing requests need the CSRF
   token and a Host/Origin allowlist match on every platform.
-- `GET /api/widget` — unauthenticated, read-only, fixed schema
-  `{"state":id,"scanned_height":n|null,"tip_height":n|null}` for the Umbrel widget.
+- `GET /api/widget` — unauthenticated, read-only, fixed schema. It must be a valid Umbrel
+  `text-with-progress` widget payload (umbreld parses `refresh` with `ms()` and throws otherwise)
+  and carries our three fields alongside:
+  `{"type":"text-with-progress","refresh":"30s","link":"","title":"Silent Payments scan",
+  "text":"42%","subtext":"Block 850,000 of 900,000","progressLabel":"Scanning","progress":0.42,
+  "state":id,"scanned_height":n|null,"tip_height":n|null}`. Error states use
+  `text:"Needs attention"`, `progress:0`. No wallet data in it.
 - `GET /healthz` — unauthenticated liveness of friglet-ui itself (200 always while serving).
 
 ## Ports (host side, every platform unless its package says otherwise)

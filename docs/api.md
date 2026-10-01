@@ -40,7 +40,7 @@ Any field may be `null` when unknown. `wallet` is `null` before setup. State ids
 catalog in `friglet-ui/states.toml` (`needs-setup`, `starting`, `verifying-identity`,
 `identity-mismatch`, `scanning`, `up-to-date`, `scan-stopped`, `paused`, `oracle-unreachable`,
 `oracle-dropped-resuming`, `peer-unreachable`, `node-pruned`, `node-syncing`, `port-in-use`,
-`rescanning-after-reset`, `crash-loop`, `unknown-exit`); the browser adds `ui-disconnected`.
+`rescanning-after-reset`, `crash-loop`, `unknown-exit`, `unsupported-network`); the browser adds `ui-disconnected`.
 
 ## Setup and wallet
 
@@ -70,5 +70,5 @@ Hex entry: `descriptor` may instead be `"hex:<scan_secret_64hex>:<spend_pubkey_6
 
 ## Unauthenticated
 
-- `GET /api/widget` → `{"state":id,"scanned_height":n|null,"tip_height":n|null}`.
+- `GET /api/widget` → Umbrel `text-with-progress` payload plus `state`, `scanned_height`, `tip_height` (exact shape in docs/contract.md).
 - `GET /healthz` → 200 `ok`.
