@@ -1,0 +1,5 @@
+# Umbrel Community App Store manifest. Umbrel reads this file from the repository root and
+# loads every `<dir>/umbrel-app.yml` one level below it whose app id starts with `id`.
+# See docs/platforms/umbrel.md.
+id: blindbit
+name: BlindBit

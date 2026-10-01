@@ -1,0 +1,49 @@
+services:
+  # umbrelOS 2.0 turns this into its in-process app gateway (Umbrel login and 2FA in front of
+  # the web UI, no PROXY_AUTH_* overrides); umbrelOS 1.x runs it as a proxy container.
+  app_proxy:
+    environment:
+      APP_HOST: blindbit-friglet_friglet-node_1
+      APP_PORT: 8097
+
+  friglet-node:
+    # friglet-node pin: the tag and its multi-arch index digest are rewritten together by the
+    # pin script. The all-zero digest is a PLACEHOLDER until the first image is published.
+    image: ghcr.io/setavenger/friglet-node:93f6a92-1@sha256:0000000000000000000000000000000000000000000000000000000000000000
+    user: "1000:1000"
+    restart: on-failure
+    # friglet-ui waits up to 120 s for friglet to stop cleanly (docs/contract.md).
+    stop_grace_period: 150s
+    environment:
+      FRIGLET_UI_PLATFORM: "umbrel"
+      FRIGLET_UI_AUTH: "gateway"
+      FRIGLET_UI_DATA_DIR: "/data"
+      FRIGLET_UI_LISTEN: "0.0.0.0:8097"
+      # bitcoin on mainnet, the network name otherwise (bitcoin app exports.sh).
+      FRIGLET_UI_NETWORK: "${APP_BITCOIN_NETWORK_ELECTRS}"
+      # The bitcoin app's whitelisted P2P listener; alternatives without it fall back to P2P.
+      FRIGLET_UI_NODE: "${APP_BITCOIN_NODE_IP}:${APP_BITCOIN_P2P_WHITEBIND_PORT-${APP_BITCOIN_P2P_PORT}}"
+      FRIGLET_UI_PUBLIC_HOST: "${DEVICE_DOMAIN_NAME}"
+      # Empty until Tor has written the onion hostname (see exports.sh and hooks/pre-start).
+      FRIGLET_UI_ONION_HOST: "${APP_BLINDBIT_FRIGLET_ELECTRUM_HIDDEN_SERVICE}"
+      FRIGLET_UI_ELECTRUM_TCP: "0.0.0.0:50031"
+      FRIGLET_UI_ELECTRUM_TLS: "0.0.0.0:50032"
+    volumes:
+      - "${APP_DATA_DIR}/data/friglet:/data"
+    ports:
+      - "50031:50031"
+      - "50032:50032"
+    networks:
+      default:
+        # Static, because Tor's HiddenServicePort target (torrc.template) must be a fixed address.
+        ipv4_address: "${APP_BLINDBIT_FRIGLET_NODE_IP}"
+
+  tor:
+    image: ghcr.io/getumbrel/tor:0.4.9.11@sha256:e382b8629c0dfef6ceb396b062622d4e4e955b19d6f16b883fd2c0723ad5671a
+    user: "1000:1000"
+    restart: on-failure
+    volumes:
+      - "${APP_DATA_DIR}/torrc:/etc/tor/torrc:ro"
+      - "${TOR_DATA_DIR}:/data"
+    environment:
+      HOME: "/tmp"
