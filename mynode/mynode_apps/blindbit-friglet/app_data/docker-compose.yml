@@ -1,0 +1,63 @@
+# Friglet on MyNode. blindbit-friglet.service runs this from /opt/mynode/blindbit-friglet.
+#
+# Variables come from two files written by the app's scripts, never by hand:
+#   .env         install_blindbit-friglet.sh  FRIGLET_IMAGE (pinned by index digest), FRIGLET_UID, FRIGLET_GID
+#   runtime.env  pre_blindbit-friglet.sh      addresses shown in Friglet, refreshed at every start
+#
+# The wallet's scan key never passes through this file or the environment: it is entered in
+# Friglet's web interface and stored in /mnt/hdd/mynode/blindbit-friglet/data (mode 0700).
+
+name: blindbit-friglet
+
+services:
+  friglet:
+    # ghcr.io/setavenger/friglet-node:<version>@sha256:<index digest>, pulled by the install script
+    image: ${FRIGLET_IMAGE:?FRIGLET_IMAGE is written by install_blindbit-friglet.sh}
+    pull_policy: never
+    container_name: blindbit-friglet
+    user: "${FRIGLET_UID:?}:${FRIGLET_GID:?}"
+    # docker0: bitcoind listens on 172.17.0.1 and whitelists 172.16.0.0/12
+    network_mode: bridge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # systemd restarts the service; friglet-ui restarts friglet inside the container
+    restart: "no"
+    stop_grace_period: 150s
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      # Web interface: nginx serves it over HTTPS on 8098, Tor on the onion's port 443
+      - "127.0.0.1:8097:8097"
+      # Electrum without TLS: only for the onion service
+      - "127.0.0.1:50031:50031"
+      # Electrum over TLS (self-signed certificate): local network
+      - "50032:50032"
+    # Both paths are made by pre_blindbit-friglet.sh; Docker must not create them as root
+    volumes:
+      - type: bind
+        source: /mnt/hdd/mynode/blindbit-friglet/data
+        target: /data
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/hdd/mynode/blindbit-friglet/.app_password
+        target: /run/friglet-ui/password
+        read_only: true
+        bind:
+          create_host_path: false
+    env_file:
+      - runtime.env
+    environment:
+      FRIGLET_UI_PLATFORM: mynode
+      FRIGLET_UI_DATA_DIR: /data
+      FRIGLET_UI_LISTEN: 0.0.0.0:8097
+      FRIGLET_UI_NETWORK: bitcoin
+      FRIGLET_UI_NODE: host.docker.internal:8333
+      FRIGLET_UI_ORACLE_URL: https://oracle.setor.dev
+      FRIGLET_UI_AUTH: password
+      FRIGLET_UI_PASSWORD_FILE: /run/friglet-ui/password
+      FRIGLET_UI_ELECTRUM_TCP: 0.0.0.0:50031
+      FRIGLET_UI_ELECTRUM_TLS: 0.0.0.0:50032
+      FRIGLET_UI_LOG: info

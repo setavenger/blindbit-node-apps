@@ -1,0 +1,942 @@
+From 1b8eb36dd0f3b162fd42267e20de2f7e3589c2a2 Mon Sep 17 00:00:00 2001
+From: setavenger <github@snblago.com>
+Date: Thu, 1 Oct 2026 14:16:22 +0000
+Subject: [PATCH] Add Friglet, a Silent Payments Electrum server (BlindBit)
+
+Friglet scans this node's blocks for one Silent Payments (BIP 352) wallet and
+serves its history to Sparrow over Electrum. It runs as one Docker container
+(ghcr.io/setavenger/friglet-node, amd64 + arm64) pulled by its pinned index
+digest, talks to the local bitcoind over P2P only, and has a web interface on
+HTTPS 8098 behind nginx with a password MyNode generates and shows on the
+app page.
+
+The install refuses pruned nodes and 32-bit devices. Uninstalling deletes
+/mnt/hdd/mynode/blindbit-friglet, which holds the wallet's scan key.
+---
+ .../app_data/docker-compose.yml               |  63 +++++
+ .../blindbit-friglet/blindbit-friglet.json    |  72 +++++
+ .../blindbit-friglet/blindbit-friglet.png     | Bin 0 -> 3253 bytes
+ .../blindbit-friglet/blindbit-friglet.service |  35 +++
+ .../nginx/https_blindbit-friglet.conf         |  21 ++
+ .../scripts/install_blindbit-friglet.sh       | 103 ++++++++
+ .../scripts/post_blindbit-friglet.sh          |   5 +
+ .../scripts/pre_blindbit-friglet.sh           | 105 ++++++++
+ .../scripts/uninstall_blindbit-friglet.sh     |  30 +++
+ .../www/python/blindbit-friglet.py            | 116 +++++++++
+ .../www/templates/blindbit-friglet.html       | 246 ++++++++++++++++++
+ scripts/print_app_download_hashes.sh          |   1 +
+ 12 files changed, 797 insertions(+)
+ create mode 100644 rootfs/standard/usr/share/mynode_apps/blindbit-friglet/app_data/docker-compose.yml
+ create mode 100644 rootfs/standard/usr/share/mynode_apps/blindbit-friglet/blindbit-friglet.json
+ create mode 100644 rootfs/standard/usr/share/mynode_apps/blindbit-friglet/blindbit-friglet.png
+ create mode 100644 rootfs/standard/usr/share/mynode_apps/blindbit-friglet/blindbit-friglet.service
+ create mode 100644 rootfs/standard/usr/share/mynode_apps/blindbit-friglet/nginx/https_blindbit-friglet.conf
+ create mode 100644 rootfs/standard/usr/share/mynode_apps/blindbit-friglet/scripts/install_blindbit-friglet.sh
+ create mode 100644 rootfs/standard/usr/share/mynode_apps/blindbit-friglet/scripts/post_blindbit-friglet.sh
+ create mode 100644 rootfs/standard/usr/share/mynode_apps/blindbit-friglet/scripts/pre_blindbit-friglet.sh
+ create mode 100644 rootfs/standard/usr/share/mynode_apps/blindbit-friglet/scripts/uninstall_blindbit-friglet.sh
+ create mode 100644 rootfs/standard/usr/share/mynode_apps/blindbit-friglet/www/python/blindbit-friglet.py
+ create mode 100644 rootfs/standard/usr/share/mynode_apps/blindbit-friglet/www/templates/blindbit-friglet.html
+
+diff --git a/rootfs/standard/usr/share/mynode_apps/blindbit-friglet/app_data/docker-compose.yml b/rootfs/standard/usr/share/mynode_apps/blindbit-friglet/app_data/docker-compose.yml
+new file mode 100644
+index 00000000..84961edc
+--- /dev/null
++++ b/rootfs/standard/usr/share/mynode_apps/blindbit-friglet/app_data/docker-compose.yml
+@@ -0,0 +1,63 @@
++# Friglet on MyNode. blindbit-friglet.service runs this from /opt/mynode/blindbit-friglet.
++#
++# Variables come from two files written by the app's scripts, never by hand:
++#   .env         install_blindbit-friglet.sh  FRIGLET_IMAGE (pinned by index digest), FRIGLET_UID, FRIGLET_GID
++#   runtime.env  pre_blindbit-friglet.sh      addresses shown in Friglet, refreshed at every start
++#
++# The wallet's scan key never passes through this file or the environment: it is entered in
++# Friglet's web interface and stored in /mnt/hdd/mynode/blindbit-friglet/data (mode 0700).
++
++name: blindbit-friglet
++
++services:
++  friglet:
++    # ghcr.io/setavenger/friglet-node:<version>@sha256:<index digest>, pulled by the install script
++    image: ${FRIGLET_IMAGE:?FRIGLET_IMAGE is written by install_blindbit-friglet.sh}
++    pull_policy: never
++    container_name: blindbit-friglet
++    user: "${FRIGLET_UID:?}:${FRIGLET_GID:?}"
++    # docker0: bitcoind listens on 172.17.0.1 and whitelists 172.16.0.0/12
++    network_mode: bridge
++    extra_hosts:
++      - "host.docker.internal:host-gateway"
++    # systemd restarts the service; friglet-ui restarts friglet inside the container
++    restart: "no"
++    stop_grace_period: 150s
++    cap_drop:
++      - ALL
++    security_opt:
++      - no-new-privileges:true
++    ports:
++      # Web interface: nginx serves it over HTTPS on 8098, Tor on the onion's port 443
++      - "127.0.0.1:8097:8097"
++      # Electrum without TLS: only for the onion service
++      - "127.0.0.1:50031:50031"
++      # Electrum over TLS (self-signed certificate): local network
++      - "50032:50032"
++    # Both paths are made by pre_blindbit-friglet.sh; Docker must not create them as root
++    volumes:
++      - type: bind
++        source: /mnt/hdd/mynode/blindbit-friglet/data
++        target: /data
++        bind:
++          create_host_path: false
++      - type: bind
++        source: /mnt/hdd/mynode/blindbit-friglet/.app_password
++        target: /run/friglet-ui/password
++        read_only: true
++        bind:
++          create_host_path: false
++    env_file:
++      - runtime.env
++    environment:
++      FRIGLET_UI_PLATFORM: mynode
++      FRIGLET_UI_DATA_DIR: /data
++      FRIGLET_UI_LISTEN: 0.0.0.0:8097
++      FRIGLET_UI_NETWORK: bitcoin
++      FRIGLET_UI_NODE: host.docker.internal:8333
++      FRIGLET_UI_ORACLE_URL: https://oracle.setor.dev
++      FRIGLET_UI_AUTH: password
++      FRIGLET_UI_PASSWORD_FILE: /run/friglet-ui/password
++      FRIGLET_UI_ELECTRUM_TCP: 0.0.0.0:50031
++      FRIGLET_UI_ELECTRUM_TLS: 0.0.0.0:50032
++      FRIGLET_UI_LOG: info
+diff --git a/rootfs/standard/usr/share/mynode_apps/blindbit-friglet/blindbit-friglet.json b/rootfs/standard/usr/share/mynode_apps/blindbit-friglet/blindbit-friglet.json
+new file mode 100644
+index 00000000..5f5f759d
+--- /dev/null
++++ b/rootfs/standard/usr/share/mynode_apps/blindbit-friglet/blindbit-friglet.json
+@@ -0,0 +1,72 @@
++{
++    "name": "Friglet",
++    "short_name": "blindbit-friglet",
++    "author": {
++        "name": "BlindBit",
++        "link": "https://github.com/setavenger"
++    },
++    "website": {
++        "name": "GitHub",
++        "link": "https://github.com/setavenger/blindbit-rs"
++    },
++    "category": "bitcoin_app",
++    "short_description": "Silent Payments",
++    "description": [
++        "Friglet is a Silent Payments (BIP 352) Electrum server for one wallet. Paste the Silent Payments descriptor that Sparrow shows, set the wallet birthday, and connect Sparrow to Friglet to see the payments sent to your sp1 address.",
++        "Friglet downloads blocks from this node's Bitcoin Core over the local P2P port. Bitcoin must be fully synced and must not be pruned: the install refuses a pruned node.",
++        "Friglet gets tweak data from the BlindBit oracle (https://oracle.setor.dev), a third-party service run by BlindBit. The oracle operator sees this node's IP address, which block ranges are scanned and when. It never sees your keys.",
++        "Anyone who can reach Friglet's Electrum port can read this wallet's history. The encrypted port 50032 is open on your local network; the onion address is a Premium feature.",
++        "Use a separate Sparrow instance (its own data directory) for this wallet: an Electrum server set in Sparrow applies to every wallet, and Friglet only knows this one.",
++        "Uninstalling deletes /mnt/hdd/mynode/blindbit-friglet: the scan key, the wallet settings, the scan progress and the login password."
++    ],
++    "linux_user": "bitcoin",
++    "latest_version": "93f6a92-1",
++    "supported_archs": ["aarch64", "x86_64"],
++    "download_skip": true,
++    "download_type": "source",
++    "download_source_url": "not_required",
++    "install_env_vars": {},
++    "supports_app_page": true,
++    "supports_testnet": false,
++    "http_port": null,
++    "https_port": 8098,
++    "extra_ports": [50031, 50032],
++    "requires_bitcoin": true,
++    "requires_docker_image_installation": true,
++    "requires_electrs": false,
++    "requires_lightning": false,
++    "show_on_marketplace_page": true,
++    "show_on_application_page": true,
++    "show_on_homepage": true,
++    "show_on_status_page": true,
++    "hide_status_icon": false,
++    "journalctl_log_name": "blindbit-friglet",
++    "app_tile_name": "Friglet",
++    "app_tile_running_status_text": "Running",
++    "app_tile_button_text": "Info",
++    "app_tile_button_href": "/app/blindbit-friglet/info",
++    "app_tile_button_open_app_directly": false,
++    "app_page_show_open_button": true,
++    "app_page_additional_buttons": [],
++    "app_page_content": [
++        {
++            "heading": "Connect",
++            "content": [
++                "Web interface: https://{LOCAL_IP_ADDRESS}:{HTTPS_PORT} (log in with the password shown on this page).",
++                "Sparrow, on your local network: {LOCAL_IP_ADDRESS}:50032 with SSL on.",
++                "Anyone who can reach these ports can read this wallet's history."
++            ]
++        }
++    ],
++    "login_username": "",
++    "can_uninstall": true,
++    "can_reinstall": true,
++    "can_enable_disable": true,
++    "data_manageable": false,
++    "is_beta": true,
++    "is_premium": false,
++    "homepage_section": "apps",
++    "homepage_order": 91,
++    "app_type": "custom",
++    "sdk_version": 2
++}
+diff --git a/rootfs/standard/usr/share/mynode_apps/blindbit-friglet/blindbit-friglet.png b/rootfs/standard/usr/share/mynode_apps/blindbit-friglet/blindbit-friglet.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..8a9754cdb6182844d57c06d39310b16a1e3cfc9a
+GIT binary patch
+literal 3253
+zcmd5;U1(fI6#ni{vNvs$y=#?*cFo?TF$xM<X(5S}<|b^qMq<@aUo4We578G*Fdz%2
+z%}@i`wz>gDXe?SV5Bem1uGHKnl~|2bP_!yEHwHy9LQ(=<%d&XR%<g8>{Ipuo1}1lY
+zzH`oZzBw~H$DiIGFW<C%6M*ve$77v<PF)>VDSeg_-`)VW47A5u4kUj3^SdwKoN(`L
+zYxy~Pu*P}z!AoBptgkj|?K7{QIoJ7s|NiWI-&~r$&A+Qx{(9xSG4OWRbGxSQcWX~I
+zEn&i&z7Vj@o{GJ~iN+&%v^%vIhrRF-Tog?iSX%#*W*fgQ7>+qT8?g1Bie_O)`_tNx
+z7@Z9A<n_xMeHH_*d1^99Yr_##cc+?B<Asl6NHk@UM1MxJHRVJC=YqnDPDK#vu4qQ9
+zw-`XkPaDGO%V@6In1!Q<2VraEB?*GX#9Wa46~o9~+Hmv^z<~^Yla)qtt}t*-3$U^5
+zl9bkDP@8>Fyocf<P$Ig`L<f>3V%X$vjJpBZ-6LlWp4}~HW%m&|tMhEFoR!@$MS?f4
+z`G??CYE>mTtobdnYrq7euOVT<+9%?~0hq2r6>u!%&l!SP^#l>A;^CMaGX8m_eb{dx
+zvV+YXK>V(I!=)58{W%T&4`2SNV)9z^31GNtNYfEMVjC9v(jh&2y{QvvuQB786mR6@
+zWU!S&rka!Fh$n6M>DMin{u?#WNM~M1H9NWu3ofGjkUra(b#yj9F&88Zm8nTBJZNhc
+z^&CpIF)PRg(b5D+^cXE`WX>>l6CQL;hB@R=HC~~%Jd}h4t#e~bY69J7apn78#=`fk
+zz^eEX!Y<gtQ5OGtSYTrlF^#!eoC|-<JR^OX?Onpai?_+_g%qB3%MoVotA?BzAzAw3
+z&0!tcESGXV?OP9dKN-cc*tuO$fmcN$ge-J<0(Igbc<exuB;&#q$RAD0>yS>6pq>e3
+z?Y&4fo*A8~QMFU35m$!Zcu0PvBCCk0`cy@n&*Z83KdwDfQI@L%&W#0AO^W9bLp6OT
+zL+Mf}xMrp0d@Ggj8V3GYjm%!D{(l@h)?PIszjt;I=w5Fqx6^B$_`do4iOHXNJx@T@
+z;d;Y?136;eNIe(lT9u{}ShqBlgWL_o*o})kx0*Z3D{J}|k@y(@7x%zQ5tQ_#%*IOI
+zw3@HHb!Ah@sFS4*YH{}JDqv&AapOyI{oy~j<%+XQ((hngRw@VQwrcZY^s~7tdgQ(k
+z{ra*bj87jbor*9&)*vMDYG2v?3t!U<DT%&JS=C@J2g0zi@@&)VW+%MhV;p7({=!be
+zi<wdrtq32je3)R|IX2Y=$Mk075S55WG)&MNLS4GT2nY+pU)%<D2Ll~DP(x1@vZ18p
+z<s5y9-e|ChgS@prGK)>b6YDM7<wO=2=ITM(0Phet*n6@%@PX#&a1xmkAZEBG+=cXJ
+zAX!@QTV(2NFVJy!Q$jFD#)<K7%y=yrd0Q%Y^A>}bBS4BQpb{bue)=Rx(>9RWlxbL|
+zMJ&Wzy-uQUTLTfI#a_Zr%@Bdq_;I${s*!!2PM)5$Ncz(j*)|k_UBq#6+23Z3_CZ;g
+z^k^%xs3u%*E4}JwhJcFkG6~e_;Z`SsThMr;rxo68!&U>SPe&`!xAfITh_T)}dUXx#
+sYJu;cE;BHEwWAiPPeyO^@BFzygIo6QXNk9dpshiB+y2<ct=-4|2EWHL+yDRo
+
+literal 0
+HcmV?d00001
+
+diff --git a/rootfs/standard/usr/share/mynode_apps/blindbit-friglet/blindbit-friglet.service b/rootfs/standard/usr/share/mynode_apps/blindbit-friglet/blindbit-friglet.service
+new file mode 100644
+index 00000000..62a28935
+--- /dev/null
++++ b/rootfs/standard/usr/share/mynode_apps/blindbit-friglet/blindbit-friglet.service
+@@ -0,0 +1,35 @@
++# blindbit-friglet service
++# /etc/systemd/system/blindbit-friglet.service
++
++[Unit]
++Description=Friglet (BlindBit Silent Payments Electrum server)
++Wants=www.service docker_images.service bitcoin.service
++After=www.service docker_images.service bitcoin.service
++
++[Service]
++WorkingDirectory=/opt/mynode/blindbit-friglet
++
++ExecStartPre=/usr/bin/is_not_shutting_down.sh
++ExecStartPre=/usr/bin/wait_on_bitcoin.sh
++ExecStartPre=/usr/bin/wait_on_docker_image_install.sh
++# Runs as root ("+"): creates the data folder, the login password and the runtime settings
++ExecStartPre=+/bin/bash -c 'if [ -f /usr/bin/service_scripts/pre_blindbit-friglet.sh ]; then /bin/bash /usr/bin/service_scripts/pre_blindbit-friglet.sh; fi'
++ExecStartPre=-/usr/local/bin/docker-compose down --remove-orphans
++ExecStart=/usr/local/bin/docker-compose up
++ExecStartPost=/bin/bash -c 'if [ -f /usr/bin/service_scripts/post_blindbit-friglet.sh ]; then /bin/bash /usr/bin/service_scripts/post_blindbit-friglet.sh; fi'
++# friglet-ui gives friglet up to 120 s to save its scan state; compose waits 150 s (stop_grace_period)
++ExecStop=/usr/local/bin/docker-compose down --remove-orphans
++
++User=bitcoin
++Group=bitcoin
++Type=simple
++TimeoutStartSec=120
++TimeoutStopSec=180
++Restart=always
++RestartSec=60
++StandardOutput=journal
++StandardError=journal
++SyslogIdentifier=blindbit-friglet
++
++[Install]
++WantedBy=multi-user.target
+diff --git a/rootfs/standard/usr/share/mynode_apps/blindbit-friglet/nginx/https_blindbit-friglet.conf b/rootfs/standard/usr/share/mynode_apps/blindbit-friglet/nginx/https_blindbit-friglet.conf
+new file mode 100644
+index 00000000..819731a7
+--- /dev/null
++++ b/rootfs/standard/usr/share/mynode_apps/blindbit-friglet/nginx/https_blindbit-friglet.conf
+@@ -0,0 +1,21 @@
++# Friglet web interface over HTTPS with the MyNode certificate.
++# The container publishes the interface on 127.0.0.1:8097 only; this is the way in from the LAN.
++server {
++    listen 8098 ssl;
++    server_name blindbit-friglet;
++
++    include /etc/nginx/mynode/mynode_ssl_params.conf;
++    include /etc/nginx/mynode/mynode_ssl_cert_key.conf;
++
++    access_log /var/log/nginx/access_blindbit-friglet.log;
++    error_log /var/log/nginx/error_blindbit-friglet.log;
++
++    # Setup sends a descriptor and a birthday; nothing larger
++    client_max_body_size 64k;
++
++    location / {
++        proxy_pass http://127.0.0.1:8097;
++
++        include /etc/nginx/mynode/mynode_ssl_proxy_params.conf;
++    }
++}
+diff --git a/rootfs/standard/usr/share/mynode_apps/blindbit-friglet/scripts/install_blindbit-friglet.sh b/rootfs/standard/usr/share/mynode_apps/blindbit-friglet/scripts/install_blindbit-friglet.sh
+new file mode 100644
+index 00000000..162fc2d5
+--- /dev/null
++++ b/rootfs/standard/usr/share/mynode_apps/blindbit-friglet/scripts/install_blindbit-friglet.sh
+@@ -0,0 +1,103 @@
++#!/bin/bash
++
++# Installs Friglet. MyNode runs this as the app's linux_user (bitcoin) from the install
++# folder /opt/mynode/blindbit-friglet, which it empties first, with VERSION, INSTALL_FOLDER
++# and STORAGE_FOLDER set. The storage folder survives upgrades and reinstalls.
++
++source /usr/share/mynode/mynode_device_info.sh
++source /usr/share/mynode/mynode_app_versions.sh
++source /usr/share/mynode/mynode_functions.sh
++
++set -x
++set -e
++
++echo "==================== INSTALLING APP ===================="
++
++: "${VERSION:?VERSION (latest_version) is set by mynode-manage-apps}"
++
++IMAGE="ghcr.io/setavenger/friglet-node"
++# "<tag> <image index digest>" for latest_version, from scripts/print_app_download_hashes.sh.
++# PLACEHOLDER DIGEST: the all-zero digest is not a real image. Replace it with the printed value
++# once ghcr.io/setavenger/friglet-node:93f6a92-1 is published; until then the pull below fails.
++IMAGE_DIGEST="93f6a92-1 sha256:0000000000000000000000000000000000000000000000000000000000000000"
++
++STORAGE_DIR="${STORAGE_FOLDER:-/mnt/hdd/mynode/blindbit-friglet}"
++BITCOIN_CONF="/mnt/hdd/mynode/bitcoin/bitcoin.conf"
++
++# Print the mainnet prune setting of a bitcoin.conf (empty when not set)
++mainnet_prune_setting() {
++    awk '
++        /^[[:space:]]*\[/ { section = $0; gsub(/[][[:space:]]/, "", section); next }
++        {
++            line = $0
++            sub(/#.*/, "", line)
++            gsub(/[[:space:]]/, "", line)
++            if (line ~ /^prune=/ && (section == "" || section == "main")) { value = substr(line, 7) }
++            if (line ~ /^main\.prune=/) { value = substr(line, 12) }
++        }
++        END { print value }
++    ' "$1"
++}
++
++pull_image_with_retries() {
++    local attempt
++    for attempt in 1 2 3 4 5; do
++        if pull_app_docker_image "$@"; then
++            return 0
++        fi
++        if [ "$attempt" -lt 5 ]; then
++            echo "Docker pull failed for $1 (attempt $attempt/5); retrying..."
++            sleep $((attempt * 5))
++        fi
++    done
++    echo "ERROR: Docker pull failed for $1 after 5 attempts" >&2
++    return 1
++}
++
++# The image is built for 64-bit ARM and x86 only
++if [ "$IS_32_BIT" = "1" ] || { [ "$DEVICE_ARCH" != "aarch64" ] && [ "$DEVICE_ARCH" != "x86_64" ]; }; then
++    echo "ERROR: Friglet cannot be installed on this device." >&2
++    echo "  Cause: Friglet runs on 64-bit devices (aarch64 or x86_64); this one reports $DEVICE_ARCH." >&2
++    echo "  Fix: install Friglet on a 64-bit MyNode device." >&2
++    exit 1
++fi
++
++# Friglet downloads every block from the wallet birthday onward from this node
++if [ -r "$BITCOIN_CONF" ]; then
++    PRUNE=$(mainnet_prune_setting "$BITCOIN_CONF")
++    if [ -n "$PRUNE" ] && ! [[ "$PRUNE" =~ ^0+$ ]]; then
++        echo "ERROR: Friglet cannot be installed: this node is pruned." >&2
++        echo "  Cause: $BITCOIN_CONF sets prune=$PRUNE. Friglet downloads every block from your wallet's" >&2
++        echo "  birthday onward from this node, and a pruned node has deleted old blocks." >&2
++        echo "  Fix: remove the prune setting on MyNode's Bitcoin Config page (/bitcoin/config), let" >&2
++        echo "  Bitcoin download the full chain again, then install Friglet again." >&2
++        echo "  Details: blindbit-node-apps docs/platforms/mynode.md#pruned-node" >&2
++        exit 1
++    fi
++else
++    echo "WARNING: cannot read $BITCOIN_CONF to check for pruning; Friglet reports a pruned node once it runs."
++fi
++
++mkdir -p "$STORAGE_DIR/data"
++chmod 700 "$STORAGE_DIR" "$STORAGE_DIR/data"
++
++cp -f app_data/docker-compose.yml docker-compose.yml
++/usr/local/bin/docker-compose down --remove-orphans 2>/dev/null || true
++
++remove_docker_images_by_name "$IMAGE"
++pull_image_with_retries "$IMAGE" "$VERSION" blindbit-friglet "$IMAGE_DIGEST"
++
++# Compose runs the image by digest when this version is pinned, so it cannot drift from the pin
++if [ "$VERSION" = "${IMAGE_DIGEST%% *}" ]; then
++    FRIGLET_IMAGE="$IMAGE:$VERSION@${IMAGE_DIGEST##* }"
++else
++    FRIGLET_IMAGE="$IMAGE:$VERSION"
++fi
++
++ENV_TMP=$(mktemp .env.XXXXXX)
++printf 'FRIGLET_IMAGE=%s\nFRIGLET_UID=%s\nFRIGLET_GID=%s\n' \
++    "$FRIGLET_IMAGE" "$(id -u bitcoin)" "$(id -g bitcoin)" > "$ENV_TMP"
++chmod 600 "$ENV_TMP"
++mv -f "$ENV_TMP" .env
++
++echo "================== DONE INSTALLING APP ================="
+diff --git a/rootfs/standard/usr/share/mynode_apps/blindbit-friglet/scripts/post_blindbit-friglet.sh b/rootfs/standard/usr/share/mynode_apps/blindbit-friglet/scripts/post_blindbit-friglet.sh
+new file mode 100644
+index 00000000..4b2cd7cc
+--- /dev/null
++++ b/rootfs/standard/usr/share/mynode_apps/blindbit-friglet/scripts/post_blindbit-friglet.sh
+@@ -0,0 +1,5 @@
++#!/bin/bash
++
++# Runs after the service starts. Nothing to do: friglet-ui reports its own state, which the
++# app page (/app/blindbit-friglet/info) shows.
++exit 0
+diff --git a/rootfs/standard/usr/share/mynode_apps/blindbit-friglet/scripts/pre_blindbit-friglet.sh b/rootfs/standard/usr/share/mynode_apps/blindbit-friglet/scripts/pre_blindbit-friglet.sh
+new file mode 100644
+index 00000000..b627d067
+--- /dev/null
++++ b/rootfs/standard/usr/share/mynode_apps/blindbit-friglet/scripts/pre_blindbit-friglet.sh
+@@ -0,0 +1,105 @@
++#!/bin/bash
++
++# Runs as root before every start (ExecStartPre=+ in blindbit-friglet.service), from the
++# install folder. Prepares what the container needs and nothing else:
++#   - the data folder friglet-ui keeps its config, scan key and scan state in
++#   - the login password (saved where MyNode's app page reads it, see save_app_default_password)
++#   - runtime.env: the addresses Friglet shows and accepts, which can change between starts
++
++set -eu
++
++source /usr/share/mynode/mynode_functions.sh
++
++APP="blindbit-friglet"
++APP_USER="bitcoin"
++STORAGE_DIR="/mnt/hdd/mynode/$APP"
++DATA_DIR="$STORAGE_DIR/data"
++PASSWORD_FILE="$STORAGE_DIR/.app_password"
++INSTALL_DIR="/opt/mynode/$APP"
++RUNTIME_ENV="$INSTALL_DIR/runtime.env"
++ONION_HOSTNAME_FILE="/var/lib/tor/mynode_$APP/hostname"
++HTTPS_PORT=8098
++
++# Refuse anything but a real directory or regular file at our paths: the data folder is
++# written from inside the container and these scripts run as root.
++require_dir() {
++    if [ -L "$1" ] || { [ -e "$1" ] && [ ! -d "$1" ]; }; then
++        echo "Refusing to use $1: not a directory" >&2
++        exit 1
++    fi
++    mkdir -p "$1"
++    chown "$APP_USER:$APP_USER" "$1"
++    chmod 700 "$1"
++}
++
++require_regular_file_or_missing() {
++    if [ -L "$1" ] || { [ -e "$1" ] && [ ! -f "$1" ]; }; then
++        echo "Refusing to use $1: not a regular file" >&2
++        exit 1
++    fi
++}
++
++# Same checks as MyNode's own pages (device_info.py: is_community_edition, is_tor_remote_access_enabled)
++is_premium() {
++    [ ! -f /home/bitcoin/.mynode/.product_key_skipped ] && [ ! -f /mnt/hdd/mynode/settings/.product_key_skipped ]
++}
++
++is_tor_remote_access_enabled() {
++    local f
++    for f in /home/bitcoin/.mynode/tor_remote_access_disabled /mnt/hdd/mynode/settings/tor_remote_access_disabled \
++             /home/bitcoin/.mynode/.tor_remote_access_disabled /mnt/hdd/mynode/settings/.tor_remote_access_disabled; do
++        [ -f "$f" ] && return 1
++    done
++    return 0
++}
++
++require_dir "$STORAGE_DIR"
++require_dir "$DATA_DIR"
++
++# Login password for the web interface, generated once and shown on MyNode's app page
++require_regular_file_or_missing "$PASSWORD_FILE"
++if ! has_app_password "$APP"; then
++    save_app_default_password "$APP" "$(generate_app_password)"
++fi
++chown "$APP_USER:$APP_USER" "$PASSWORD_FILE"
++chmod 600 "$PASSWORD_FILE"
++
++# Compose file: refreshed from app_data, which MyNode updates on every boot
++install -m 0644 -o "$APP_USER" -g "$APP_USER" "$INSTALL_DIR/app_data/docker-compose.yml" "$INSTALL_DIR/docker-compose.yml"
++
++# Addresses for Friglet's Connect page and its Host/Origin check
++LOCAL_IP=$(/usr/bin/get_local_ip.py 2>/dev/null || true)
++if ! [[ "$LOCAL_IP" =~ ^[0-9.]+$ ]]; then
++    LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
++fi
++HOST_NAME=$(hostname)
++
++ONION_HOST=""
++if is_premium && is_tor_remote_access_enabled && [ -f "$ONION_HOSTNAME_FILE" ]; then
++    ONION_HOST=$(tr -d '[:space:]' < "$ONION_HOSTNAME_FILE")
++    if ! [[ "$ONION_HOST" =~ ^[a-z2-7]{56}\.onion$ ]]; then
++        ONION_HOST=""
++    fi
++fi
++
++# Host values browsers send through nginx (host:8098) or Tor (the onion on port 443)
++ALLOWED_HOSTS=$(printf '%s\n' ${LOCAL_IP:+"$LOCAL_IP:$HTTPS_PORT"} "$HOST_NAME.local:$HTTPS_PORT" \
++    "$HOST_NAME:$HTTPS_PORT" "mynode.local:$HTTPS_PORT" ${ONION_HOST:+"$ONION_HOST"} | awk '!seen[$0]++' | paste -sd, -)
++
++require_regular_file_or_missing "$RUNTIME_ENV"
++umask 077
++ENV_TMP=$(mktemp "$INSTALL_DIR/.runtime.env.XXXXXX")
++{
++    echo "FRIGLET_UI_PUBLIC_HOST=${LOCAL_IP:-$HOST_NAME.local}"
++    if [ -n "$ONION_HOST" ]; then
++        echo "FRIGLET_UI_ONION_HOST=$ONION_HOST"
++    fi
++    echo "FRIGLET_UI_ALLOWED_HOSTS=$ALLOWED_HOSTS"
++} > "$ENV_TMP"
++chown "$APP_USER:$APP_USER" "$ENV_TMP"
++mv -f "$ENV_TMP" "$RUNTIME_ENV"
++
++# A node pruned after install cannot serve old blocks; Friglet shows this as node-pruned
++if grep -Eq '^[[:space:]]*(main\.)?prune[[:space:]]*=[[:space:]]*0*[1-9]' /mnt/hdd/mynode/bitcoin/bitcoin.conf 2>/dev/null; then
++    echo "WARNING: bitcoin.conf sets prune=; Friglet needs an unpruned node and will report node-pruned"
++fi
+diff --git a/rootfs/standard/usr/share/mynode_apps/blindbit-friglet/scripts/uninstall_blindbit-friglet.sh b/rootfs/standard/usr/share/mynode_apps/blindbit-friglet/scripts/uninstall_blindbit-friglet.sh
+new file mode 100644
+index 00000000..99d2e1b0
+--- /dev/null
++++ b/rootfs/standard/usr/share/mynode_apps/blindbit-friglet/scripts/uninstall_blindbit-friglet.sh
+@@ -0,0 +1,30 @@
++#!/bin/bash
++
++# Uninstalls Friglet. MyNode runs this as the app's linux_user (bitcoin) from the install
++# folder, after stopping the service and before deleting /opt/mynode/blindbit-friglet.
++
++source /usr/share/mynode/mynode_device_info.sh
++source /usr/share/mynode/mynode_app_versions.sh
++source /usr/share/mynode/mynode_functions.sh
++
++set -x
++
++echo "==================== UNINSTALLING APP ===================="
++
++STORAGE_DIR="/mnt/hdd/mynode/blindbit-friglet"
++
++cp -f app_data/docker-compose.yml docker-compose.yml 2>/dev/null || true
++/usr/local/bin/docker-compose down --remove-orphans 2>/dev/null || true
++
++remove_docker_images_by_name "ghcr.io/setavenger/friglet-node"
++
++# The data folder holds secrets, so it goes with the app
++echo "Deleting $STORAGE_DIR:"
++echo "  - the wallet's scan key and Friglet's wallet settings (config.toml, scan.key)"
++echo "  - the scan progress, its backups and any previous wallet kept for restore"
++echo "  - the TLS certificate of the Electrum port and the web interface login password"
++echo "Your bitcoin is not affected: the scan key can be entered again from Sparrow, and a new"
++echo "install scans again from the wallet birthday. MyNode keeps the onion service keys."
++rm -rf "$STORAGE_DIR"
++
++echo "================== DONE UNINSTALLING APP ================="
+diff --git a/rootfs/standard/usr/share/mynode_apps/blindbit-friglet/www/python/blindbit-friglet.py b/rootfs/standard/usr/share/mynode_apps/blindbit-friglet/www/python/blindbit-friglet.py
+new file mode 100644
+index 00000000..e2757b44
+--- /dev/null
++++ b/rootfs/standard/usr/share/mynode_apps/blindbit-friglet/www/python/blindbit-friglet.py
+@@ -0,0 +1,116 @@
++from flask import Blueprint, render_template
++from user_management import check_logged_in
++from application_info import get_application, get_application_status, get_application_status_color, \
++    get_application_password, APP_PASSWORD_USER_SET
++from device_info import read_ui_settings, get_local_ip, get_onion_url_for_service, is_community_edition, \
++    is_tor_remote_access_enabled
++import json
++import re
++import urllib.request
++
++
++SHORT_NAME = "blindbit-friglet"
++HTTPS_PORT = 8098
++ELECTRUM_TCP_PORT = 50031
++ELECTRUM_TLS_PORT = 50032
++# Unauthenticated, read-only status of friglet-ui: {"state": id, "scanned_height": n, "tip_height": n}
++WIDGET_URL = "http://127.0.0.1:8097/api/widget"
++WIDGET_MAX_BYTES = 4096
++
++mynode_blindbit_friglet = Blueprint("mynode_blindbit_friglet", __name__)
++# MyNode looks the blueprint up as "mynode_<short_name>", which has a "-" in it
++globals()["mynode_" + SHORT_NAME] = mynode_blindbit_friglet
++
++STATE_LABELS = {
++    "needs-setup": "Waiting for wallet setup",
++    "starting": "Starting",
++    "verifying-identity": "Checking the wallet",
++    "identity-mismatch": "Needs attention: wallet does not match",
++    "scanning": "Scanning",
++    "up-to-date": "Up to date",
++    "scan-stopped": "Needs attention: scanning stopped",
++    "paused": "Paused",
++    "oracle-unreachable": "Needs attention: oracle unreachable",
++    "oracle-dropped-resuming": "Reconnecting to the oracle",
++    "peer-unreachable": "Needs attention: Bitcoin node unreachable",
++    "node-pruned": "Needs attention: Bitcoin node is pruned",
++    "node-syncing": "Waiting for the Bitcoin node to sync",
++    "port-in-use": "Needs attention: port in use",
++    "rescanning-after-reset": "Scanning again",
++    "crash-loop": "Needs attention: keeps restarting",
++    "unknown-exit": "Needs attention: stopped unexpectedly",
++}
++
++
++def _height(value):
++    if isinstance(value, int) and not isinstance(value, bool) and 0 <= value < 100000000:
++        return value
++    return None
++
++
++def get_scan_status():
++    # Ask friglet-ui directly (never through a proxy) and accept only the fixed widget schema
++    try:
++        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
++        with opener.open(WIDGET_URL, timeout=1.5) as response:
++            raw = response.read(WIDGET_MAX_BYTES + 1)
++        if len(raw) > WIDGET_MAX_BYTES:
++            return None
++        data = json.loads(raw.decode("utf-8"))
++    except Exception:
++        return None
++    if not isinstance(data, dict):
++        return None
++    state = data.get("state")
++    if not isinstance(state, str) or not re.match(r"^[a-z][a-z-]{0,39}$", state):
++        return None
++    return {
++        "state": state,
++        "label": STATE_LABELS.get(state, state),
++        "attention": STATE_LABELS.get(state, "").startswith("Needs attention"),
++        "scanned_height": _height(data.get("scanned_height")),
++        "tip_height": _height(data.get("tip_height")),
++    }
++
++
++def get_onion_info():
++    # Onion addresses are a Premium feature and need Tor remote access (as on the Electrum Server page)
++    if is_community_edition():
++        return {"available": False, "reason": "Premium feature"}
++    if not is_tor_remote_access_enabled():
++        return {"available": False, "reason": "Tor remote access is disabled"}
++    onion = get_onion_url_for_service(SHORT_NAME)
++    if not re.match(r"^[a-z2-7]{56}\.onion$", onion or ""):
++        return {"available": False, "reason": "Not created yet (restart Friglet after Tor has started)"}
++    return {"available": True, "host": onion}
++
++
++@mynode_blindbit_friglet.route("/info")
++def blindbit_friglet_page():
++    check_logged_in()
++
++    app = get_application(SHORT_NAME)
++    app_status = get_application_status(SHORT_NAME)
++    app_status_color = get_application_status_color(SHORT_NAME)
++
++    password = get_application_password(SHORT_NAME)
++    if password == APP_PASSWORD_USER_SET:
++        password = ""
++
++    local_ip = get_local_ip()
++    template_data = {
++        "title": "MyNode - " + app["name"],
++        "ui_settings": read_ui_settings(),
++        "app_status": app_status,
++        "app_status_color": app_status_color,
++        "app": app,
++        "friglet_password": password,
++        "scan_status": get_scan_status() if app["is_enabled"] else None,
++        "local_ip": local_ip,
++        "web_url": "https://{}:{}".format(local_ip, HTTPS_PORT),
++        "electrum_tls": "{}:{}:s".format(local_ip, ELECTRUM_TLS_PORT),
++        "electrum_tls_port": ELECTRUM_TLS_PORT,
++        "electrum_tcp_port": ELECTRUM_TCP_PORT,
++        "onion": get_onion_info(),
++    }
++    return render_template("/app/blindbit-friglet/blindbit-friglet.html", **template_data)
+diff --git a/rootfs/standard/usr/share/mynode_apps/blindbit-friglet/www/templates/blindbit-friglet.html b/rootfs/standard/usr/share/mynode_apps/blindbit-friglet/www/templates/blindbit-friglet.html
+new file mode 100644
+index 00000000..b200a27a
+--- /dev/null
++++ b/rootfs/standard/usr/share/mynode_apps/blindbit-friglet/www/templates/blindbit-friglet.html
+@@ -0,0 +1,246 @@
++<!DOCTYPE html lang="en">
++    <head>
++        <title>{{app.name}}</title>
++        {% include 'includes/head.html' %}
++
++        <script src="{{ url_for('static', filename='js/manage_apps.js')}}"></script>
++
++        <style>
++            .friglet_value {
++                font-family: monospace;
++                word-break: break-all;
++            }
++            .friglet_muted {
++                color: #888;
++            }
++            .friglet_attention {
++                color: #c0392b;
++                font-weight: bold;
++            }
++        </style>
++
++        <script>
++        $(document).ready(function() {
++            $("#show_friglet_password").on("click", function() {
++                $("#show_friglet_password").hide(0);
++                $("#friglet_password").show();
++                $("#copy_friglet_password").show();
++            });
++
++            $(".friglet_copy").on("click", function() {
++                var text = $("#" + $(this).data("target")).text();
++                function showCopied() {
++                    showAlertPopup("alert_popup", "<b>Copied!</b>");
++                }
++                function showFailed() {
++                    showAlertPopup("alert_popup", "<b>Copy failed, select the text instead.</b>");
++                }
++
++                if (navigator.clipboard && window.isSecureContext) {
++                    navigator.clipboard.writeText(text).then(showCopied, showFailed);
++                    return;
++                }
++
++                var input = document.createElement("input");
++                input.value = text;
++                document.body.appendChild(input);
++                input.select();
++                try {
++                    document.execCommand("copy") ? showCopied() : showFailed();
++                } catch (e) {
++                    showFailed();
++                }
++                document.body.removeChild(input);
++            });
++        });
++        </script>
++    </head>
++    <body>
++        {% include 'includes/logo_header.html' %}
++        <div class="mynode_top_left_div">
++            <a href="/"><img class="mynode_nav_icon" src="{{ url_for('static', filename="images/home.png")}}"/></a>
++        </div>
++
++        <div class="main_header">{{app.name}}</div>
++        <br/>
++
++        <div class="app_page_container">
++            <div class="app_page_block_header">&nbsp;</div>
++            <div class="app_page_block_contents">
++
++                <div class="app_page_block_contents_left">
++                    <img class="app_page_icon" src="{{ url_for('static', filename="images/app_icons/")}}{{app.short_name}}.png"/>
++                    {% if not app.hide_status_icon %}
++                    <div class="app_page_status_bar {{app_status_color}}"></div>
++                    {% endif %}
++                    <p style="font-size: 14px; text-align: center;">{{app_status}}</p>
++
++                    <br/>
++
++                    {% if not app.is_installed %}
++                        <button class="ui-button ui-widget ui-corner-all mynode_button app_page_button install_button" onclick="install('{{ app.name }}', '{{ app.short_name }}');">Install</button>
++                    {% else %}
++                        {% if app.is_enabled %}
++                            <button class="ui-button ui-widget ui-corner-all mynode_button app_page_button" onclick="open_app_in_new_tab('{{app.http_port}}', '{{app.https_port}}', false, '{{app.tor_address}}')">Open</button>
++
++                            <div class="divider button_divider"></div>
++
++                            <button class="ui-button ui-widget ui-corner-all mynode_button app_page_button" onclick="restart_app_via_api('{{ app.name }}', '{{ app.short_name }}');">Restart</button>
++
++                            <div class="divider button_divider"></div>
++                        {% endif %}
++
++                        {% if app.can_enable_disable %}
++                            {% if not app.is_enabled %}
++                                <button class="ui-button ui-widget ui-corner-all mynode_button app_page_button" onclick="toggleEnabled('{{app.short_name}}', '{{app.name}}', true)">Enable</button>
++                            {% else %}
++                                <button class="ui-button ui-widget ui-corner-all mynode_button app_page_button" onclick="toggleEnabled('{{app.short_name}}', '{{app.name}}', false)">Disable</button>
++                            {% endif %}
++                        {% endif %}
++                    {% endif %}
++                </div>
++
++                <div class="app_page_block_contents_right">
++                    <div class="app_page_block_contents_heading">
++                        <div class="info-page-block">Info</div>
++                    </div>
++                    <div class="app_page_block_contents_text">
++                        <table class="info_table" style="font-size: 12px; margin-left: 10px">
++                            <tr>
++                                <th>Installed Version</th>
++                                <td>{% if app.is_installed %}{{app.current_version}}{% else %}Not Installed{% endif %}</td>
++                            </tr>
++                            <tr>
++                                <th>Author</th>
++                                <td><a href="{{app.author.link}}" target="_blank">{{app.author.name}}</a></td>
++                            </tr>
++                            <tr>
++                                <th>Website</th>
++                                <td><a href="{{app.website.link}}" target="_blank">{{app.website.name}}</a></td>
++                            </tr>
++                        </table>
++                    </div>
++
++                    {% if app.is_installed %}
++                    <div class="app_page_block_contents_heading">
++                        <div class="info-page-block">Status</div>
++                    </div>
++                    <div class="app_page_block_contents_text">
++                        <table class="info_table" style="font-size: 12px; margin-left: 10px">
++                            <tr>
++                                <th>Service</th>
++                                <td>{{app_status}}</td>
++                            </tr>
++                            <tr>
++                                <th>Scan</th>
++                                <td>
++                                    {% if scan_status %}
++                                        <span {% if scan_status.attention %}class="friglet_attention"{% endif %}>{{scan_status.label}}</span>
++                                        <span class="friglet_muted">({{scan_status.state}})</span>
++                                    {% elif app.is_enabled %}
++                                        <span class="friglet_muted">Not reachable yet. Friglet waits for Bitcoin to sync before it starts.</span>
++                                    {% else %}
++                                        <span class="friglet_muted">Friglet is disabled</span>
++                                    {% endif %}
++                                </td>
++                            </tr>
++                            {% if scan_status and scan_status.scanned_height is not none %}
++                            <tr>
++                                <th>Scanned to block</th>
++                                <td>{{ "{:,}".format(scan_status.scanned_height) }}{% if scan_status.tip_height is not none %} of {{ "{:,}".format(scan_status.tip_height) }}{% endif %}</td>
++                            </tr>
++                            {% endif %}
++                        </table>
++                    </div>
++
++                    <div class="app_page_block_contents_heading">
++                        <div class="info-page-block">Web Interface</div>
++                    </div>
++                    <div class="app_page_block_contents_text">
++                        <table class="info_table" style="font-size: 12px; margin-left: 10px">
++                            <tr>
++                                <th>Local network</th>
++                                <td><a href="{{web_url}}" target="_blank" class="friglet_value">{{web_url}}</a></td>
++                            </tr>
++                            <tr>
++                                <th>Tor</th>
++                                <td>
++                                    {% if onion.available %}
++                                        <span class="friglet_value">https://{{onion.host}}</span>
++                                    {% else %}
++                                        <span class="friglet_muted">{{onion.reason}}</span>
++                                    {% endif %}
++                                </td>
++                            </tr>
++                            <tr>
++                                <th>Password</th>
++                                <td>
++                                    {% if friglet_password %}
++                                        <span id="friglet_password" class="friglet_value" style="display: none; margin: 0;">{{friglet_password}}</span>
++                                        <span id="copy_friglet_password" class="ui-icon ui-icon-copy friglet_copy" data-target="friglet_password" style="cursor: pointer; display: none;" title="Copy password"></span>
++                                        <a id="show_friglet_password" class="ui-button ui-widget ui-corner-all mynode_button_small" style="width: 100px;">show password</a>
++                                    {% else %}
++                                        <span class="friglet_muted">Created when Friglet first starts</span>
++                                    {% endif %}
++                                </td>
++                            </tr>
++                        </table>
++                        <p>Your browser warns about the certificate the first time: MyNode signs it itself. Set up your wallet in the web interface by pasting the Silent Payments descriptor Sparrow shows and the wallet's birthday height.</p>
++                    </div>
++
++                    <div class="app_page_block_contents_heading">
++                        <div class="info-page-block">Connect Sparrow</div>
++                    </div>
++                    <div class="app_page_block_contents_text">
++                        <p>Use a separate Sparrow instance with its own data directory for this wallet. The server set in Sparrow applies to every wallet in that instance, and Friglet only knows this one: your other wallets would show no history. Switch the other instance back to your usual server to see them again.</p>
++                        <table class="info_table" style="font-size: 12px; margin-left: 10px">
++                            <tr>
++                                <th>Local network (recommended)</th>
++                                <td>
++                                    <span id="friglet_electrum_tls" class="friglet_value">{{electrum_tls}}</span>
++                                    <span class="ui-icon ui-icon-copy friglet_copy" data-target="friglet_electrum_tls" style="cursor: pointer;" title="Copy"></span>
++                                    <br/><span class="friglet_muted">Host {{local_ip}}, port {{electrum_tls_port}}, SSL on. The certificate is Friglet's own; compare its fingerprint with the one on Friglet's Connect page.</span>
++                                </td>
++                            </tr>
++                            <tr>
++                                <th>Tor</th>
++                                <td>
++                                    {% if onion.available %}
++                                        <span id="friglet_electrum_onion" class="friglet_value">{{onion.host}}:{{electrum_tcp_port}}:t</span>
++                                        <span class="ui-icon ui-icon-copy friglet_copy" data-target="friglet_electrum_onion" style="cursor: pointer;" title="Copy"></span>
++                                        <br/><span class="friglet_muted">Port {{electrum_tcp_port}}, SSL off (Tor encrypts the connection). Sparrow needs Tor running.</span>
++                                    {% else %}
++                                        <span class="friglet_muted">{{onion.reason}}</span>
++                                    {% endif %}
++                                </td>
++                            </tr>
++                        </table>
++                    </div>
++
++                    <div class="app_page_block_contents_heading">
++                        <div class="info-page-block">Privacy</div>
++                    </div>
++                    <div class="app_page_block_contents_text">
++                        <p>Anyone who can reach port {{electrum_tls_port}} on your local network, or who knows the onion address, can read this wallet's addresses, transactions and balance. Do not forward these ports on your router.</p>
++                        <p>Friglet gets tweak data from the BlindBit oracle (oracle.setor.dev), a third-party service run by BlindBit. The operator sees this node's IP address, which block ranges are scanned and when. It never sees your keys.</p>
++                        <p>Uninstalling Friglet deletes /mnt/hdd/mynode/blindbit-friglet: the scan key, the wallet settings, the scan progress and the login password. Your bitcoin is not affected.</p>
++                    </div>
++                    {% endif %}
++
++                </div>
++
++            </div>
++        </div>
++
++        <div id="confirm-dialog"></div>
++        <div id="alert_popup" class="bottom_center_alert_popup"></div>
++
++        <div id="loading_spinner_overlay" class="loading_spinner_overlay" style="display:none;">
++            <img id="loading_spinner" class="loading_image" src="{{ url_for('static', filename="images/loading.gif")}}"/>
++            <br/>
++            <span id="loading_spinner_message">Loading...</span>
++        </div>
++
++        {% include 'includes/footer.html' %}
++    </body>
++</html>
+diff --git a/scripts/print_app_download_hashes.sh b/scripts/print_app_download_hashes.sh
+index df06f904..8e444ebe 100755
+--- a/scripts/print_app_download_hashes.sh
++++ b/scripts/print_app_download_hashes.sh
+@@ -33,6 +33,7 @@ LNBITS_DIGEST lnbits/lnbits LNBITS_VERSION
+ # Docker images pulled by marketplace install scripts: <app> <pin variable> <image> <tag, with {VERSION} from its JSON>
+ MARKETPLACE_DOCKER_IMAGES="
+ albyhub IMAGE_DIGEST ghcr.io/getalby/hub {VERSION}
++blindbit-friglet IMAGE_DIGEST ghcr.io/setavenger/friglet-node {VERSION}
+ canary BACKEND_IMAGE_DIGEST schjonhaug/canary-backend {VERSION}
+ canary FRONTEND_IMAGE_DIGEST schjonhaug/canary-frontend {VERSION}
+ jam IMAGE_DIGEST ghcr.io/joinmarket-webui/jam-ui-only {VERSION}-clientserver-v0.9.11

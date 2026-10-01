@@ -1,0 +1,246 @@
+<!DOCTYPE html lang="en">
+    <head>
+        <title>{{app.name}}</title>
+        {% include 'includes/head.html' %}
+
+        <script src="{{ url_for('static', filename='js/manage_apps.js')}}"></script>
+
+        <style>
+            .friglet_value {
+                font-family: monospace;
+                word-break: break-all;
+            }
+            .friglet_muted {
+                color: #888;
+            }
+            .friglet_attention {
+                color: #c0392b;
+                font-weight: bold;
+            }
+        </style>
+
+        <script>
+        $(document).ready(function() {
+            $("#show_friglet_password").on("click", function() {
+                $("#show_friglet_password").hide(0);
+                $("#friglet_password").show();
+                $("#copy_friglet_password").show();
+            });
+
+            $(".friglet_copy").on("click", function() {
+                var text = $("#" + $(this).data("target")).text();
+                function showCopied() {
+                    showAlertPopup("alert_popup", "<b>Copied!</b>");
+                }
+                function showFailed() {
+                    showAlertPopup("alert_popup", "<b>Copy failed, select the text instead.</b>");
+                }
+
+                if (navigator.clipboard && window.isSecureContext) {
+                    navigator.clipboard.writeText(text).then(showCopied, showFailed);
+                    return;
+                }
+
+                var input = document.createElement("input");
+                input.value = text;
+                document.body.appendChild(input);
+                input.select();
+                try {
+                    document.execCommand("copy") ? showCopied() : showFailed();
+                } catch (e) {
+                    showFailed();
+                }
+                document.body.removeChild(input);
+            });
+        });
+        </script>
+    </head>
+    <body>
+        {% include 'includes/logo_header.html' %}
+        <div class="mynode_top_left_div">
+            <a href="/"><img class="mynode_nav_icon" src="{{ url_for('static', filename="images/home.png")}}"/></a>
+        </div>
+
+        <div class="main_header">{{app.name}}</div>
+        <br/>
+
+        <div class="app_page_container">
+            <div class="app_page_block_header">&nbsp;</div>
+            <div class="app_page_block_contents">
+
+                <div class="app_page_block_contents_left">
+                    <img class="app_page_icon" src="{{ url_for('static', filename="images/app_icons/")}}{{app.short_name}}.png"/>
+                    {% if not app.hide_status_icon %}
+                    <div class="app_page_status_bar {{app_status_color}}"></div>
+                    {% endif %}
+                    <p style="font-size: 14px; text-align: center;">{{app_status}}</p>
+
+                    <br/>
+
+                    {% if not app.is_installed %}
+                        <button class="ui-button ui-widget ui-corner-all mynode_button app_page_button install_button" onclick="install('{{ app.name }}', '{{ app.short_name }}');">Install</button>
+                    {% else %}
+                        {% if app.is_enabled %}
+                            <button class="ui-button ui-widget ui-corner-all mynode_button app_page_button" onclick="open_app_in_new_tab('{{app.http_port}}', '{{app.https_port}}', false, '{{app.tor_address}}')">Open</button>
+
+                            <div class="divider button_divider"></div>
+
+                            <button class="ui-button ui-widget ui-corner-all mynode_button app_page_button" onclick="restart_app_via_api('{{ app.name }}', '{{ app.short_name }}');">Restart</button>
+
+                            <div class="divider button_divider"></div>
+                        {% endif %}
+
+                        {% if app.can_enable_disable %}
+                            {% if not app.is_enabled %}
+                                <button class="ui-button ui-widget ui-corner-all mynode_button app_page_button" onclick="toggleEnabled('{{app.short_name}}', '{{app.name}}', true)">Enable</button>
+                            {% else %}
+                                <button class="ui-button ui-widget ui-corner-all mynode_button app_page_button" onclick="toggleEnabled('{{app.short_name}}', '{{app.name}}', false)">Disable</button>
+                            {% endif %}
+                        {% endif %}
+                    {% endif %}
+                </div>
+
+                <div class="app_page_block_contents_right">
+                    <div class="app_page_block_contents_heading">
+                        <div class="info-page-block">Info</div>
+                    </div>
+                    <div class="app_page_block_contents_text">
+                        <table class="info_table" style="font-size: 12px; margin-left: 10px">
+                            <tr>
+                                <th>Installed Version</th>
+                                <td>{% if app.is_installed %}{{app.current_version}}{% else %}Not Installed{% endif %}</td>
+                            </tr>
+                            <tr>
+                                <th>Author</th>
+                                <td><a href="{{app.author.link}}" target="_blank">{{app.author.name}}</a></td>
+                            </tr>
+                            <tr>
+                                <th>Website</th>
+                                <td><a href="{{app.website.link}}" target="_blank">{{app.website.name}}</a></td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    {% if app.is_installed %}
+                    <div class="app_page_block_contents_heading">
+                        <div class="info-page-block">Status</div>
+                    </div>
+                    <div class="app_page_block_contents_text">
+                        <table class="info_table" style="font-size: 12px; margin-left: 10px">
+                            <tr>
+                                <th>Service</th>
+                                <td>{{app_status}}</td>
+                            </tr>
+                            <tr>
+                                <th>Scan</th>
+                                <td>
+                                    {% if scan_status %}
+                                        <span {% if scan_status.attention %}class="friglet_attention"{% endif %}>{{scan_status.label}}</span>
+                                        <span class="friglet_muted">({{scan_status.state}})</span>
+                                    {% elif app.is_enabled %}
+                                        <span class="friglet_muted">Not reachable yet. Friglet waits for Bitcoin to sync before it starts.</span>
+                                    {% else %}
+                                        <span class="friglet_muted">Friglet is disabled</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% if scan_status and scan_status.scanned_height is not none %}
+                            <tr>
+                                <th>Scanned to block</th>
+                                <td>{{ "{:,}".format(scan_status.scanned_height) }}{% if scan_status.tip_height is not none %} of {{ "{:,}".format(scan_status.tip_height) }}{% endif %}</td>
+                            </tr>
+                            {% endif %}
+                        </table>
+                    </div>
+
+                    <div class="app_page_block_contents_heading">
+                        <div class="info-page-block">Web Interface</div>
+                    </div>
+                    <div class="app_page_block_contents_text">
+                        <table class="info_table" style="font-size: 12px; margin-left: 10px">
+                            <tr>
+                                <th>Local network</th>
+                                <td><a href="{{web_url}}" target="_blank" class="friglet_value">{{web_url}}</a></td>
+                            </tr>
+                            <tr>
+                                <th>Tor</th>
+                                <td>
+                                    {% if onion.available %}
+                                        <span class="friglet_value">https://{{onion.host}}</span>
+                                    {% else %}
+                                        <span class="friglet_muted">{{onion.reason}}</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>Password</th>
+                                <td>
+                                    {% if friglet_password %}
+                                        <span id="friglet_password" class="friglet_value" style="display: none; margin: 0;">{{friglet_password}}</span>
+                                        <span id="copy_friglet_password" class="ui-icon ui-icon-copy friglet_copy" data-target="friglet_password" style="cursor: pointer; display: none;" title="Copy password"></span>
+                                        <a id="show_friglet_password" class="ui-button ui-widget ui-corner-all mynode_button_small" style="width: 100px;">show password</a>
+                                    {% else %}
+                                        <span class="friglet_muted">Created when Friglet first starts</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        </table>
+                        <p>Your browser warns about the certificate the first time: MyNode signs it itself. Set up your wallet in the web interface by pasting the Silent Payments descriptor Sparrow shows and the wallet's birthday height.</p>
+                    </div>
+
+                    <div class="app_page_block_contents_heading">
+                        <div class="info-page-block">Connect Sparrow</div>
+                    </div>
+                    <div class="app_page_block_contents_text">
+                        <p>Use a separate Sparrow instance with its own data directory for this wallet. The server set in Sparrow applies to every wallet in that instance, and Friglet only knows this one: your other wallets would show no history. Switch the other instance back to your usual server to see them again.</p>
+                        <table class="info_table" style="font-size: 12px; margin-left: 10px">
+                            <tr>
+                                <th>Local network (recommended)</th>
+                                <td>
+                                    <span id="friglet_electrum_tls" class="friglet_value">{{electrum_tls}}</span>
+                                    <span class="ui-icon ui-icon-copy friglet_copy" data-target="friglet_electrum_tls" style="cursor: pointer;" title="Copy"></span>
+                                    <br/><span class="friglet_muted">Host {{local_ip}}, port {{electrum_tls_port}}, SSL on. The certificate is Friglet's own; compare its fingerprint with the one on Friglet's Connect page.</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>Tor</th>
+                                <td>
+                                    {% if onion.available %}
+                                        <span id="friglet_electrum_onion" class="friglet_value">{{onion.host}}:{{electrum_tcp_port}}:t</span>
+                                        <span class="ui-icon ui-icon-copy friglet_copy" data-target="friglet_electrum_onion" style="cursor: pointer;" title="Copy"></span>
+                                        <br/><span class="friglet_muted">Port {{electrum_tcp_port}}, SSL off (Tor encrypts the connection). Sparrow needs Tor running.</span>
+                                    {% else %}
+                                        <span class="friglet_muted">{{onion.reason}}</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <div class="app_page_block_contents_heading">
+                        <div class="info-page-block">Privacy</div>
+                    </div>
+                    <div class="app_page_block_contents_text">
+                        <p>Anyone who can reach port {{electrum_tls_port}} on your local network, or who knows the onion address, can read this wallet's addresses, transactions and balance. Do not forward these ports on your router.</p>
+                        <p>Friglet gets tweak data from the BlindBit oracle (oracle.setor.dev), a third-party service run by BlindBit. The operator sees this node's IP address, which block ranges are scanned and when. It never sees your keys.</p>
+                        <p>Uninstalling Friglet deletes /mnt/hdd/mynode/blindbit-friglet: the scan key, the wallet settings, the scan progress and the login password. Your bitcoin is not affected.</p>
+                    </div>
+                    {% endif %}
+
+                </div>
+
+            </div>
+        </div>
+
+        <div id="confirm-dialog"></div>
+        <div id="alert_popup" class="bottom_center_alert_popup"></div>
+
+        <div id="loading_spinner_overlay" class="loading_spinner_overlay" style="display:none;">
+            <img id="loading_spinner" class="loading_image" src="{{ url_for('static', filename="images/loading.gif")}}"/>
+            <br/>
+            <span id="loading_spinner_message">Loading...</span>
+        </div>
+
+        {% include 'includes/footer.html' %}
+    </body>
+</html>
