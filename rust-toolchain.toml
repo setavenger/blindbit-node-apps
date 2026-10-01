@@ -1,5 +1,5 @@
-# The exact toolchain version is pinned in versions.env once the maintainer settles it; until
-# then builds use the current stable channel with rustfmt and clippy. MSRV: rust-version in
+# Local development tracks stable. Reproducible builds (Dockerfile, CI images, release) use
+# RUST_VERSION / RUST_IMAGE from versions.env, pinned by digest. MSRV: rust-version in
 # Cargo.toml (1.89: std file locking; blindbit-rs needs 1.88).
 [toolchain]
 channel = "stable"

@@ -11,6 +11,8 @@
 FROM debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
 
 ENV DEBIAN_FRONTEND=noninteractive
+# Test harness only: tracks bookworm package updates on purpose.
+# hadolint ignore=DL3008
 RUN apt-get update -qq \
  && apt-get install -y -qq --no-install-recommends \
       sudo nginx-light openssl curl ca-certificates jq whiptail python3 iproute2 \

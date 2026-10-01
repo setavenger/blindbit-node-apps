@@ -8,9 +8,10 @@
 #   Dockerfile                 ARG defaults between "--- pins" and "--- end of pins"
 #   Cargo.toml, */Cargo.toml   friglet-ipc = { git = BLINDBIT_RS_REPO, rev = BLINDBIT_RS_REV }
 #   Cargo.lock                 friglet-ipc source; rewritten with `cargo update` in RUST_IMAGE
-#   rust-toolchain.toml        channel = RUST_VERSION
+#   (rust-toolchain.toml is deliberately not pinned: local dev tracks stable; reproducible
+#    builds use RUST_IMAGE by digest)
 #   any other tracked file     IMAGE_REPO:<version>[@sha256:<IMAGE_DIGEST>] image references,
-#   (outside upstream/)        and FRIGLET_NODE_TAG / FRIGLET_NODE_VERSION = '<version>' (or "")
+#   (outside upstream/ and test fixtures) and FRIGLET_NODE_TAG / FRIGLET_NODE_VERSION = '<version>' (or "")
 #                              assignments, e.g. platform manifests and compose files
 #   */umbrel-app.yml           version: "<version>"
 set -euo pipefail
@@ -118,12 +119,6 @@ if [ -f "$ROOT/Cargo.lock" ] && grep -q '^name = "friglet-ipc"' "$ROOT/Cargo.loc
   fi
 fi
 
-# --- rust-toolchain.toml ---------------------------------------------------------------------
-if [ -f "$ROOT/rust-toolchain.toml" ]; then
-  sed -E "s/^(channel[[:space:]]*=[[:space:]]*)\"[^\"]*\"/\1\"${RUST_VERSION}\"/" "$ROOT/rust-toolchain.toml" > "$tmp/rust-toolchain.toml"
-  apply "$ROOT/rust-toolchain.toml" "$tmp/rust-toolchain.toml"
-fi
-
 # --- image references and version assignments in every other tracked text file -------------
 [[ $IMAGE_DIGEST =~ ^sha256:[0-9a-f]{64}$ ]] || die "IMAGE_DIGEST must be sha256:<64 hex>"
 repo_re=$(printf '%s' "$IMAGE_REPO" | sed 's/[.[\*^$/]/\\&/g')
@@ -144,7 +139,7 @@ while IFS= read -r rel; do
   grep -Eq "${repo_re}:${ver_re}|FRIGLET_NODE_(TAG|VERSION)[[:space:]]*[:=][[:space:]]*['\"]${ver_re}|^version:[[:space:]]*[\"']?${ver_re}" "$f" || continue
   render_refs "$f" > "$tmp/refs"
   apply "$f" "$tmp/refs"
-done < <(git -C "$ROOT" ls-files --cached --others --exclude-standard -- ':!:upstream/**' ':!:build/**' ':!:dist/**' | grep -v '/node_modules/' | sort -u)
+done < <(git -C "$ROOT" ls-files --cached --others --exclude-standard -- ':!:upstream/**' ':!:build/**' ':!:dist/**' ':!:*/tests/**' ':!:*/test/**' | grep -v '/node_modules/' | sort -u)
 
 if [ "$drift" = 1 ]; then
   die "derived references differ from versions.env"

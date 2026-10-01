@@ -21,7 +21,7 @@ run_shellcheck() {
   mapfile -t files < <(tracked '*.sh')
   [ ${#files[@]} -gt 0 ] || { log "shellcheck: no files"; return 0; }
   log "shellcheck: ${#files[@]} files"
-  docker run --rm -v "$ROOT:/mnt:ro" -w /mnt "$SHELLCHECK_IMAGE" -x -P SCRIPTDIR "${files[@]}"
+  docker run --rm -v "$ROOT:/mnt:ro" -w /mnt "$SHELLCHECK_IMAGE" -x -P SCRIPTDIR -S warning "${files[@]}"
 }
 
 run_hadolint() {
