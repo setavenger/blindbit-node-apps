@@ -1,0 +1,2570 @@
+#!/bin/bash
+
+# Big Bear Universal Apps - Platform Converter
+# Converts Universal App format to multiple platform formats
+# Supports: CasaOS, Portainer, Runtipi, Dockge, Cosmos, Umbrel
+
+set -e
+
+# Color codes for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Print colored output
+print_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
+print_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
+print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
+print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+
+# Default configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+UNIVERSAL_REPO="$(dirname "$SCRIPT_DIR")"
+APPS_DIR="$UNIVERSAL_REPO/apps"
+OUTPUT_DIR="$UNIVERSAL_REPO/converted"
+PLATFORMS=("casaos" "portainer" "runtipi" "dockge" "cosmos" "umbrel")
+
+# Variables
+SPECIFIC_APP=""
+DRY_RUN=false
+VERBOSE=false
+VALIDATE=false
+SOURCE_ONLY=false
+
+# Counters
+TOTAL_CONVERTED=0
+TOTAL_SKIPPED=0
+TOTAL_ERRORS=0
+
+# Usage information
+usage() {
+    cat << EOF
+Usage: $0 [OPTIONS]
+
+Convert Universal App format to multiple platform formats.
+
+OPTIONS:
+    -h, --help              Show this help message
+    -i, --input DIR         Input directory containing universal apps (default: ./apps)
+    -o, --output DIR        Output directory for converted apps (default: ./converted)
+    -p, --platforms LIST    Comma-separated list of platforms to convert to
+                           Available: casaos,portainer,runtipi,dockge,cosmos,umbrel (default: all)
+    -a, --app NAME          Convert specific app only
+    --dry-run              Show what would be converted without actually converting
+    --validate             Validate existing conversions
+    -v, --verbose          Verbose output
+
+EXAMPLES:
+    $0                                    # Convert all apps to all platforms
+    $0 -p casaos,portainer               # Convert to CasaOS and Portainer only
+    $0 -a jellyseerr                     # Convert only jellyseerr app
+    $0 --dry-run                         # Preview conversion without changes
+
+REPOSITORY STRUCTURE:
+    big-bear-universal-apps/
+    ├── apps/
+    │   ├── jellyseerr/
+    │   │   ├── app.json
+    │   │   └── docker-compose.yml
+    │   └── ...
+    ├── converted/
+    │   ├── casaos/
+    │   ├── portainer/
+    │   ├── runtipi/
+    │   ├── dockge/
+    │   ├── cosmos/
+    │   └── umbrel/
+    └── scripts/
+        └── convert-to-platforms.sh (this script)
+
+EOF
+}
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --source-only)
+            SOURCE_ONLY=true
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        -i|--input)
+            APPS_DIR="$2"
+            shift 2
+            ;;
+        -o|--output)
+            OUTPUT_DIR="$2"
+            shift 2
+            ;;
+        -p|--platforms)
+            IFS=',' read -ra PLATFORMS <<< "$2"
+            shift 2
+            ;;
+        -a|--app)
+            SPECIFIC_APP="$2"
+            shift 2
+            ;;
+        --dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+        --validate)
+            VALIDATE=true
+            shift
+            ;;
+        -v|--verbose)
+            VERBOSE=true
+            shift
+            ;;
+        *)
+            print_error "Unknown option: $1"
+            usage
+            exit 1
+            ;;
+    esac
+done
+
+# Check dependencies
+check_dependencies() {
+    local deps=("jq" "yq" "perl")
+    local missing=()
+    
+    for dep in "${deps[@]}"; do
+        if ! command -v "$dep" &> /dev/null; then
+            missing+=("$dep")
+        fi
+    done
+    
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        print_error "Missing required dependencies: ${missing[*]}"
+        print_info "Install missing dependencies:"
+        for dep in "${missing[@]}"; do
+            case "$dep" in
+                jq)
+                    print_info "  - jq: apt-get install jq  # or brew install jq"
+                    ;;
+                yq)
+                    print_info "  - yq: brew install yq  # or wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64"
+                    ;;
+                perl)
+                    print_info "  - perl: apt-get install perl  # or brew install perl (usually pre-installed)"
+                    ;;
+            esac
+        done
+        exit 1
+    fi
+    
+    # Check for optional image conversion tools
+    local has_image_converter=false
+    if command -v convert &> /dev/null; then
+        has_image_converter=true
+    elif command -v ffmpeg &> /dev/null; then
+        has_image_converter=true
+    elif command -v sips &> /dev/null; then
+        has_image_converter=true
+    fi
+    
+    if [[ "$has_image_converter" == "false" ]]; then
+        print_warning "No image conversion tool found (ImageMagick, ffmpeg, or sips)"
+        print_info "Install ImageMagick: apt-get install imagemagick  # or brew install imagemagick"
+    fi
+}
+
+# Validate JSON syntax
+validate_json_syntax() {
+    local file="$1"
+    
+    if ! jq empty "$file" 2>/dev/null; then
+        return 1
+    fi
+    
+    return 0
+}
+
+# Validate YAML syntax
+validate_yaml_syntax() {
+    local file="$1"
+    
+    if ! yq eval '.' "$file" > /dev/null 2>&1; then
+        return 1
+    fi
+    
+    return 0
+}
+
+# Map any category to a valid CasaOS v2 category.
+# Valid: Media Productivity Home Networking AI Finance Social Developer Others
+map_casaos_category() {
+    local raw
+    raw=$(echo "$1" | tr '[:upper:]' '[:lower:]')
+    case "$raw" in
+        media)         echo "Media" ;;
+        productivity)  echo "Productivity" ;;
+        home)          echo "Home" ;;
+        networking|network)    echo "Networking" ;;
+        ai)            echo "AI" ;;
+        finance)       echo "Finance" ;;
+        social)        echo "Social" ;;
+        developer|development|developers|dev)  echo "Developer" ;;
+        others)        echo "Others" ;;
+        photography|photos|video|streaming)    echo "Media" ;;
+        utilities|utility|storage|tools)       echo "Others" ;;
+        *)             echo "Others" ;;
+    esac
+}
+
+# Map category to valid Runtipi category
+# Valid Runtipi categories: network, media, development, automation, social,
+# utilities, photography, security, featured, books, data, music, finance, gaming, ai
+map_runtipi_category() {
+    local category="$1"
+    local category_lower=$(echo "$category" | tr '[:upper:]' '[:lower:]')
+    
+    case "$category_lower" in
+        # Valid categories - pass through
+        network|media|development|automation|social|utilities|photography|security|featured|books|data|music|finance|gaming|ai)
+            echo "$category_lower"
+            ;;
+        # Map common BigBear/CasaOS categories to valid Runtipi categories
+        bigbearcasaos|bigbearuniversalapps|bigbear|casaos|other)
+            echo "utilities"
+            ;;
+        # Map specific app types
+        productivity|office|tools)
+            echo "utilities"
+            ;;
+        video|streaming|movies|tv)
+            echo "media"
+            ;;
+        audio|podcast)
+            echo "music"
+            ;;
+        photo*|image*)
+            echo "photography"
+            ;;
+        cloud|storage|backup)
+            echo "data"
+            ;;
+        chat|communication|messaging)
+            echo "social"
+            ;;
+        code|programming|ide)
+            echo "development"
+            ;;
+        vpn|firewall|auth*)
+            echo "security"
+            ;;
+        smart*|iot|home*)
+            echo "automation"
+            ;;
+        game*|emulat*)
+            echo "gaming"
+            ;;
+        llm|machine*learning|ml|gpt|ollama)
+            echo "ai"
+            ;;
+        budget|accounting|money)
+            echo "finance"
+            ;;
+        # Default fallback
+        *)
+            echo "utilities"
+            ;;
+    esac
+}
+
+# Initialize output directories
+init_directories() {
+    if [[ "$DRY_RUN" == "true" ]]; then
+        print_info "DRY RUN: Would create output directories"
+        return
+    fi
+    
+    mkdir -p "$OUTPUT_DIR"
+    for platform in "${PLATFORMS[@]}"; do
+        mkdir -p "$OUTPUT_DIR/$platform"
+        if [[ "$platform" == "portainer" ]]; then
+            # Initialize Portainer master template
+            init_portainer_master_template
+        fi
+    done
+    print_success "Created output directories in $OUTPUT_DIR"
+}
+
+# Load metadata from app.json
+load_app_metadata() {
+    local app_dir="$1"
+    local app_json="$app_dir/app.json"
+    
+    if [[ ! -f "$app_json" ]]; then
+        print_error "app.json not found in $app_dir"
+        TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+        return 1
+    fi
+    
+    # Validate JSON syntax
+    if ! jq empty "$app_json" 2>/dev/null; then
+        print_error "Invalid JSON in $app_json"
+        jq empty "$app_json" 2>&1 | head -5
+        TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+        return 1
+    fi
+    
+    # Extract all metadata fields into environment variables
+    export APP_ID=$(jq -r '.metadata.id' "$app_json")
+    export APP_NAME=$(jq -r '.metadata.name' "$app_json")
+    export APP_DESCRIPTION=$(jq -r '.metadata.description // ""' "$app_json")
+    export APP_TAGLINE=$(jq -r '.metadata.tagline // ""' "$app_json")
+    export APP_VERSION=$(jq -r '.metadata.version' "$app_json")
+    export APP_AUTHOR=$(jq -r '.metadata.author // "BigBearCommunity"' "$app_json")
+    export APP_DEVELOPER=$(jq -r '.metadata.developer // ""' "$app_json")
+    export APP_CATEGORY=$(jq -r '.metadata.category // "Other"' "$app_json")
+    export APP_LICENSE=$(jq -r '.metadata.license // ""' "$app_json")
+    export APP_HOMEPAGE=$(jq -r '.metadata.homepage // ""' "$app_json")
+    
+    export APP_ICON=$(jq -r '.visual.icon // ""' "$app_json")
+    export APP_THUMBNAIL=$(jq -r '.visual.thumbnail // ""' "$app_json")
+    export APP_LOGO=$(jq -r '.visual.logo // ""' "$app_json")
+    
+    export APP_YOUTUBE=$(jq -r '.resources.youtube // ""' "$app_json")
+    export APP_DOCS=$(jq -r '.resources.documentation // ""' "$app_json")
+    export APP_REPOSITORY=$(jq -r '.resources.repository // ""' "$app_json")
+    export APP_ISSUES=$(jq -r '.resources.issues // ""' "$app_json")
+    export APP_SUPPORT=$(jq -r '.resources.support // ""' "$app_json")
+    
+    export APP_ARCHITECTURES=$(jq -c '.technical.architectures // ["amd64", "arm64"]' "$app_json")
+    export APP_MAIN_SERVICE=$(jq -r '.technical.main_service // "app"' "$app_json")
+    export APP_DEFAULT_PORT=$(jq -r '.technical.default_port // "8080"' "$app_json")
+    export APP_MAIN_IMAGE=$(jq -r '.technical.main_image' "$app_json")
+    export APP_COMPOSE_FILE=$(jq -r '.technical.compose_file // "docker-compose.yml"' "$app_json")
+    
+    export APP_ENV_VARS=$(jq -c '.deployment.environment_variables // []' "$app_json")
+    export APP_VOLUMES=$(jq -c '.deployment.volumes // []' "$app_json")
+    export APP_PORTS=$(jq -c '.deployment.ports // []' "$app_json")
+    
+    export APP_UI_SCHEME=$(jq -r '.ui.scheme // "http"' "$app_json")
+    export APP_UI_PATH=$(jq -r '.ui.path // ""' "$app_json")
+    export APP_TIPS=$(jq -c '.ui.tips // {}' "$app_json")
+    
+    export APP_TAGS=$(jq -c '.tags // []' "$app_json")
+    
+    # Platform compatibility flags
+    export COMPAT_CASAOS=$(jq -r 'if .compatibility.casaos.supported == null then "true" else (.compatibility.casaos.supported | tostring) end' "$app_json")
+    export COMPAT_PORTAINER=$(jq -r 'if .compatibility.portainer.supported == null then "true" else (.compatibility.portainer.supported | tostring) end' "$app_json")
+    export COMPAT_RUNTIPI=$(jq -r 'if .compatibility.runtipi.supported == null then "true" else (.compatibility.runtipi.supported | tostring) end' "$app_json")
+    export COMPAT_DOCKGE=$(jq -r 'if .compatibility.dockge.supported == null then "true" else (.compatibility.dockge.supported | tostring) end' "$app_json")
+    export COMPAT_COSMOS=$(jq -r 'if .compatibility.cosmos.supported == null then "true" else (.compatibility.cosmos.supported | tostring) end' "$app_json")
+    
+    # Platform-specific port overrides
+    export PORT_CASAOS=$(jq -r '.compatibility.casaos.port // empty' "$app_json")
+    export PORT_PORTAINER=$(jq -r '.compatibility.portainer.port // empty' "$app_json")
+    export PORT_RUNTIPI=$(jq -r '.compatibility.runtipi.port // empty' "$app_json")
+    export PORT_DOCKGE=$(jq -r '.compatibility.dockge.port // empty' "$app_json")
+    export PORT_COSMOS=$(jq -r '.compatibility.cosmos.port // empty' "$app_json")
+    export PORT_UMBREL=$(jq -r '.compatibility.umbrel.port // empty' "$app_json")
+    export APP_PORT_UMBREL=$(jq -r '.compatibility.umbrel.app_port // empty' "$app_json")
+    export COMPAT_UMBREL=$(jq -r 'if .compatibility.umbrel.supported == null then "true" else (.compatibility.umbrel.supported | tostring) end' "$app_json")
+    
+    # Validate required fields
+    if [[ -z "$APP_ID" ]] || [[ "$APP_ID" == "null" ]]; then
+        print_error "Missing required field: metadata.id in $app_json"
+        TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+        return 1
+    fi
+    
+    if [[ -z "$APP_NAME" ]] || [[ "$APP_NAME" == "null" ]]; then
+        print_error "Missing required field: metadata.name in $app_json"
+        TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+        return 1
+    fi
+    
+    if [[ -z "$APP_VERSION" ]] || [[ "$APP_VERSION" == "null" ]]; then
+        print_error "Missing required field: metadata.version in $app_json"
+        TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+        return 1
+    fi
+    
+    if [[ -z "$APP_MAIN_IMAGE" ]] || [[ "$APP_MAIN_IMAGE" == "null" ]]; then
+        print_error "Missing required field: technical.main_image in $app_json"
+        TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+        return 1
+    fi
+}
+
+# Get folder name for a specific platform (with override support)
+get_platform_folder_name() {
+    local app_dir="$1"
+    local platform="$2"
+    local app_json="$app_dir/app.json"
+    
+    # Try to get platform-specific folder_name override
+    local folder_name=$(jq -r ".compatibility.$platform.folder_name // empty" "$app_json" 2>/dev/null)
+    
+    # If no override, use the app ID
+    if [[ -z "$folder_name" ]]; then
+        folder_name=$(jq -r '.metadata.id' "$app_json")
+    fi
+    
+    echo "$folder_name"
+}
+
+# Initialize Portainer master template file
+init_portainer_master_template() {
+    local master_file="$OUTPUT_DIR/portainer/templates.json"
+    
+    if [[ "$DRY_RUN" == "true" ]]; then
+        return
+    fi
+    
+    cat > "$master_file" << 'EOF'
+{
+  "version": "3",
+  "templates": [
+EOF
+    
+    echo "1" > "$OUTPUT_DIR/portainer/.template_id_counter"
+}
+
+# Finalize Portainer master template file
+finalize_portainer_master_template() {
+    local master_file="$OUTPUT_DIR/portainer/templates.json"
+    
+    if [[ "$DRY_RUN" == "true" ]] || [[ ! -f "$master_file" ]]; then
+        return
+    fi
+    
+    # Remove trailing comma from last entry and close JSON
+    sed -i.bak '$ s/,$//' "$master_file"
+    cat >> "$master_file" << 'EOF'
+  ]
+}
+EOF
+    rm -f "${master_file}.bak"
+    
+    # Validate JSON syntax
+    if ! jq empty "$master_file" 2>/dev/null; then
+        print_error "Generated Portainer templates.json is invalid JSON!"
+        print_error "Validation error:"
+        jq empty "$master_file" 2>&1 | head -5
+        TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+        return 1
+    fi
+    
+    print_success "Finalized Portainer master template ($(jq '.templates | length' "$master_file") templates)"
+}
+
+# Create a placeholder logo.jpg image
+create_placeholder_logo() {
+    local output_file="$1"
+    
+    if command -v convert &> /dev/null; then
+        convert -size 512x512 xc:gray "$output_file" 2>/dev/null || touch "$output_file"
+    else
+        touch "$output_file"
+    fi
+}
+
+# Validate app directory and files
+validate_app() {
+    local app_name="$1"
+    local app_dir="$APPS_DIR/$app_name"
+    
+    if [[ ! -d "$app_dir" ]]; then
+        print_error "App directory not found: $app_dir"
+        TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+        return 1
+    fi
+    
+    if [[ ! -f "$app_dir/app.json" ]]; then
+        print_error "app.json not found for $app_name"
+        TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+        return 1
+    fi
+    
+    if [[ ! -f "$app_dir/docker-compose.yml" ]]; then
+        print_error "docker-compose.yml not found for $app_name"
+        TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+        return 1
+    fi
+    
+    # Validate JSON syntax
+    if ! jq empty "$app_dir/app.json" 2>/dev/null; then
+        print_error "Invalid JSON in app.json for $app_name"
+        jq empty "$app_dir/app.json" 2>&1 | head -5
+        TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+        return 1
+    fi
+    
+    # Validate YAML syntax for docker-compose.yml
+    if ! validate_yaml_syntax "$app_dir/docker-compose.yml"; then
+        print_error "Invalid YAML in docker-compose.yml for $app_name"
+        yq eval '.' "$app_dir/docker-compose.yml" 2>&1 | head -10
+        TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+        return 1
+    fi
+    
+    return 0
+}
+
+# Helper function to adjust docker-compose for platform-specific needs
+adjust_compose_for_platform() {
+    local input_file="$1"
+    local output_file="$2"
+    local platform="$3"
+    local app_name="$4"
+    
+    case "$platform" in
+        casaos)
+            # Copy compose and add x-casaos sections
+            cp "$input_file" "$output_file"
+            # Will add x-casaos extensions in convert_to_casaos function
+            ;;
+        portainer|dockge|cosmos)
+            # Copy the compose file and add big-bear- prefix to volume names
+            cp "$input_file" "$output_file"
+            add_bigbear_volume_prefix "$output_file"
+            # Remove the 'name' field for Portainer, Dockge, and Cosmos
+            yq eval 'del(.name)' -i "$output_file"
+            ;;
+        runtipi)
+            # Copy compose, add runtipi.managed label and tipi_main_network
+            cp "$input_file" "$output_file"
+            # Remove the 'name' field for Runtipi
+            yq eval 'del(.name)' -i "$output_file"
+            # Will be modified in convert_to_runtipi function
+            ;;
+        umbrel)
+            # Use clean compose as-is
+            cp "$input_file" "$output_file"
+            # Remove the 'name' field for Umbrel as well
+            yq eval 'del(.name)' -i "$output_file"
+            ;;
+    esac
+}
+
+# Add big-bear- prefix to all named volumes
+add_bigbear_volume_prefix() {
+    local compose_file="$1"
+    
+    # Get list of named volumes
+    local volume_names=$(yq eval '.volumes | keys | .[]' "$compose_file" 2>/dev/null || echo "")
+    
+    if [[ -z "$volume_names" ]]; then
+        return
+    fi
+    
+    # For each volume, add big-bear- prefix using sed
+    while IFS= read -r vol_name; do
+        [[ -z "$vol_name" ]] && continue
+        
+        local new_vol_name="big-bear-${vol_name}"
+        
+        # Use sed to replace all occurrences
+        # 1. Replace in volumes section keys
+        sed -i.bak "s/^  ${vol_name}:/  ${new_vol_name}:/g" "$compose_file"
+        # 2. Replace volume name values
+        sed -i.bak "s/name: ${vol_name}$/name: ${new_vol_name}/g" "$compose_file"
+        # 3. Replace in service volume references (short form: - vol_name:)
+        sed -i.bak "s/- ${vol_name}:/- ${new_vol_name}:/g" "$compose_file"
+        # 4. Replace in service volume references (long form: source: vol_name)
+        sed -i.bak "s/source: ${vol_name}$/source: ${new_vol_name}/g" "$compose_file"
+        
+        rm -f "$compose_file.bak"
+    done <<< "$volume_names"
+}
+
+# Convert to CasaOS format
+convert_to_casaos() {
+    local app_name="$1"
+    local app_dir="$2"
+    
+    local folder_name=$(get_platform_folder_name "$app_dir" "casaos")
+    local output_dir="$OUTPUT_DIR/casaos/$folder_name"
+    
+    if [[ "$DRY_RUN" == "true" ]]; then
+        print_info "DRY RUN: Would convert $app_name to CasaOS format (folder: $folder_name)"
+        return
+    fi
+    
+    mkdir -p "$output_dir"
+
+    # Start with clean compose
+    cp "$app_dir/docker-compose.yml" "$output_dir/docker-compose.yml"
+    local compose_file="$output_dir/docker-compose.yml"
+
+    local casaos_category_raw
+    casaos_category_raw=$(jq -r '.compatibility.casaos.category // empty' "$app_dir/app.json")
+    if [[ -z "$casaos_category_raw" ]]; then
+        casaos_category_raw="$APP_CATEGORY"
+    fi
+    local casaos_category
+    casaos_category=$(map_casaos_category "$casaos_category_raw")
+
+    # Update the name to include big-bear- prefix for CasaOS
+    local current_name=$(yq eval '.name' "$compose_file")
+    if [[ "$current_name" != "big-bear-"* ]]; then
+        current_name="$current_name" yq eval '.name = ("big-bear-" + strenv(current_name))' -i "$compose_file"
+    fi
+    
+    # Add x-casaos sections to compose file
+    # Add top-level x-casaos
+    APP_ARCHITECTURES="$APP_ARCHITECTURES" yq eval '.x-casaos.architectures = (env(APP_ARCHITECTURES) | ... style="")' -i "$compose_file"
+    APP_ID="$APP_ID" yq eval '.x-casaos.id = ("com.bigbeartechworld." + strenv(APP_ID))' -i "$compose_file"
+    APP_MAIN_SERVICE="$APP_MAIN_SERVICE" yq eval '.x-casaos.main = strenv(APP_MAIN_SERVICE)' -i "$compose_file"
+    APP_DESCRIPTION="$APP_DESCRIPTION" yq eval '.x-casaos.description.en_US = strenv(APP_DESCRIPTION)' -i "$compose_file"
+    
+    # Add screenshot_link if screenshots exist
+    local screenshots=$(jq -c '.visual.screenshots // []' "$app_dir/app.json")
+    local screenshot_count=$(echo "$screenshots" | jq 'length')
+    if [[ "$screenshot_count" -gt 0 ]]; then
+        screenshots="$screenshots" yq eval '.x-casaos.screenshot_link = (env(screenshots) | ... style="")' -i "$compose_file"
+    fi
+    
+    APP_TAGLINE="$APP_TAGLINE" yq eval '.x-casaos.tagline.en_US = strenv(APP_TAGLINE)' -i "$compose_file"
+    APP_DEVELOPER="$APP_DEVELOPER" yq eval '.x-casaos.developer = strenv(APP_DEVELOPER)' -i "$compose_file"
+    APP_AUTHOR="$APP_AUTHOR" yq eval '.x-casaos.author = strenv(APP_AUTHOR)' -i "$compose_file"
+    APP_ICON="$APP_ICON" yq eval '.x-casaos.icon = strenv(APP_ICON)' -i "$compose_file"
+    APP_THUMBNAIL="$APP_THUMBNAIL" yq eval '.x-casaos.thumbnail = strenv(APP_THUMBNAIL)' -i "$compose_file"
+    
+    # Add tips if they exist
+    local tips_before_install=$(jq -r '.ui.tips.before_install.en_us // ""' "$app_dir/app.json")
+    if [[ -n "$tips_before_install" && "$tips_before_install" != "null" ]]; then
+        # Escape the multiline string for yq and use style="literal" for proper formatting
+        local tips_json=$(jq -c '.ui.tips.before_install // {}' "$app_dir/app.json")
+        tips_json="$tips_json" yq eval '.x-casaos.tips.before_install = (env(tips_json) | ... style="")' -i "$compose_file"
+        if [[ "$(yq eval '.x-casaos.tips.before_install | has("en_us")' "$compose_file")" == "true" ]]; then
+            yq eval '.x-casaos.tips.before_install.en_US = .x-casaos.tips.before_install.en_us | del(.x-casaos.tips.before_install.en_us)' -i "$compose_file"
+        fi
+    fi
+
+    APP_NAME="$APP_NAME" yq eval '.x-casaos.title.en_US = strenv(APP_NAME)' -i "$compose_file"
+    casaos_category="$casaos_category" yq eval '.x-casaos.category = strenv(casaos_category)' -i "$compose_file"
+    
+    # Use platform-specific port if defined, otherwise use default
+    local casaos_port="${PORT_CASAOS:-$APP_DEFAULT_PORT}"
+    casaos_port="$casaos_port" yq eval '.x-casaos.port_map = strenv(casaos_port)' -i "$compose_file"
+    
+    # Add descriptive comments to x-casaos section using perl (works on both macOS and Linux)
+    # Add comment before architectures
+    perl -i -pe 's/^x-casaos:/x-casaos:\n  # Supported CPU architectures for this application/' "$compose_file"
+
+    # Add comment before id
+    perl -i -pe 's/^  id:/  # Stable reverse-domain app identifier\n  id:/' "$compose_file"
+
+    # Add comment before main
+    perl -i -pe 's/^  main:/  # Main service for this application\n  main:/' "$compose_file"
+    
+    # Add comment before description
+    perl -i -pe 's/^  description:/  # Detailed description for the application\n  description:/' "$compose_file"
+    
+    # Add comment before screenshot_link (if it exists)
+    perl -i -pe 's/^  screenshot_link:/  # Screenshot links for the application\n  screenshot_link:/' "$compose_file"
+    
+    # Add comment before tagline
+    perl -i -pe 's/^  tagline:/  # Brief tagline for the application\n  tagline:/' "$compose_file"
+    
+    # Add comment before developer
+    perl -i -pe 's/^  developer:/  # Developer'"'"'s information\n  developer:/' "$compose_file"
+    
+    # Add comment before author  
+    perl -i -pe 's/^  author:/  # Author of this particular configuration\n  author:/' "$compose_file"
+    
+    # Add comment before icon
+    perl -i -pe 's/^  icon:/  # Icon URL for the application\n  icon:/' "$compose_file"
+    
+    # Add comment before thumbnail
+    perl -i -pe 's/^  thumbnail:/  # Thumbnail image for the application (if any)\n  thumbnail:/' "$compose_file"
+    
+    # Add comment before tips (if it exists)
+    perl -i -pe 's/^  tips:/  # Installation tips\n  tips:/' "$compose_file"
+    
+    # Add comment before title
+    perl -i -pe 's/^  title:/  # Title for the application\n  title:/' "$compose_file"
+    
+    # Add comment before category
+    perl -i -pe 's/^  category:/  # Category under which the application falls\n  category:/' "$compose_file"
+    
+    # Add comment before port_map
+    perl -i -pe 's/^  port_map:/  # Default port mapping for the application\n  port_map:/' "$compose_file"
+    
+    # Add service-level x-casaos for ALL services (not just main)
+    # Get all service names
+    local all_services=$(yq eval '.services | keys | .[]' "$compose_file")
+    
+    while IFS= read -r service_name; do
+        [[ -z "$service_name" ]] && continue
+        
+        # Add environment variables for this service
+        # Environment can be either an array of "KEY=VALUE" strings or an object {KEY: VALUE}
+        local env_format=$(service_name="$service_name" yq eval '.services[strenv(service_name)].environment | type' "$compose_file" 2>/dev/null || echo "null")
+        local env_index=0
+        
+        if [[ "$env_format" == "!!seq" ]]; then
+            # Array format: ["KEY=VALUE", ...]
+            local service_envs=$(service_name="$service_name" yq eval '.services[strenv(service_name)].environment | .[]' "$compose_file" 2>/dev/null || echo "")
+            while IFS= read -r env_entry; do
+                [[ -z "$env_entry" ]] && continue
+                
+                # Extract key from "KEY=VALUE" format
+                local env_key="${env_entry%%=*}"
+                
+                # Skip if empty or invalid
+                if [[ -z "$env_key" ]] || [[ "$env_key" == "null" ]] || [[ "$env_key" == "#"* ]]; then
+                    continue
+                fi
+                
+                # Add to x-casaos with proper escaping
+                service_name="$service_name" env_key="$env_key" env_index="$env_index" yq eval '.services[strenv(service_name)].x-casaos.envs[env(env_index)].container = strenv(env_key)' -i "$compose_file" 2>/dev/null || true
+                service_name="$service_name" env_key="$env_key" env_index="$env_index" yq eval '.services[strenv(service_name)].x-casaos.envs[env(env_index)].description.en_US = ("Container Variable: " + strenv(env_key))' -i "$compose_file" 2>/dev/null || true
+                env_index=$((env_index + 1))
+            done <<< "$service_envs"
+        elif [[ "$env_format" == "!!map" ]]; then
+            # Object format: {KEY: VALUE, ...}
+            local service_envs=$(service_name="$service_name" yq eval '.services[strenv(service_name)].environment | keys | .[]' "$compose_file" 2>/dev/null || echo "")
+            while IFS= read -r env_key; do
+                [[ -z "$env_key" ]] && continue
+                
+                # Skip if empty or invalid
+                if [[ -z "$env_key" ]] || [[ "$env_key" == "null" ]] || [[ "$env_key" == "#"* ]]; then
+                    continue
+                fi
+                
+                # Add to x-casaos with proper escaping
+                service_name="$service_name" env_key="$env_key" env_index="$env_index" yq eval '.services[strenv(service_name)].x-casaos.envs[env(env_index)].container = strenv(env_key)' -i "$compose_file" 2>/dev/null || true
+                service_name="$service_name" env_key="$env_key" env_index="$env_index" yq eval '.services[strenv(service_name)].x-casaos.envs[env(env_index)].description.en_US = ("Container Variable: " + strenv(env_key))' -i "$compose_file" 2>/dev/null || true
+                env_index=$((env_index + 1))
+            done <<< "$service_envs"
+        fi
+        
+        # Add volumes for this service (handles both short-form and long-form syntax)
+        local vol_count=$(service_name="$service_name" yq eval '.services[strenv(service_name)].volumes | length' "$compose_file" 2>/dev/null || echo "0")
+        local vol_index=0
+        for ((i=0; i<vol_count; i++)); do
+            # Check if entry is a string (short-form) or object (long-form)
+            local vol_type=$(service_name="$service_name" i="$i" yq eval '.services[strenv(service_name)].volumes[env(i)] | type' "$compose_file" 2>/dev/null)
+            local container_path=""
+
+            if [[ "$vol_type" == "!!map" ]]; then
+                # Long-form: extract target field
+                container_path=$(service_name="$service_name" i="$i" yq eval '.services[strenv(service_name)].volumes[env(i)].target' "$compose_file" 2>/dev/null)
+            else
+                # Short-form: extract path after first colon
+                local vol_str=$(service_name="$service_name" i="$i" yq eval '.services[strenv(service_name)].volumes[env(i)]' "$compose_file" 2>/dev/null)
+                container_path="${vol_str#*:}"
+                container_path="${container_path%%:*}"
+                # Only accept absolute or relative paths as container paths
+                [[ "$container_path" != /* ]] && [[ "$container_path" != ./* ]] && container_path=""
+            fi
+
+            if [[ -z "$container_path" ]] || [[ "$container_path" == "null" ]]; then
+                continue
+            fi
+
+            service_name="$service_name" container_path="$container_path" vol_index="$vol_index" yq eval '.services[strenv(service_name)].x-casaos.volumes[env(vol_index)].container = strenv(container_path)' -i "$compose_file" 2>/dev/null || true
+            service_name="$service_name" container_path="$container_path" vol_index="$vol_index" yq eval '.services[strenv(service_name)].x-casaos.volumes[env(vol_index)].description.en_US = ("Container Path: " + strenv(container_path))' -i "$compose_file" 2>/dev/null || true
+            vol_index=$((vol_index + 1))
+        done
+        
+        # Add ports for this service (handles both short-form and long-form syntax)
+        local port_count=$(service_name="$service_name" yq eval '.services[strenv(service_name)].ports | length' "$compose_file" 2>/dev/null || echo "0")
+        local port_index=0
+        for ((i=0; i<port_count; i++)); do
+            local port_type=$(service_name="$service_name" i="$i" yq eval '.services[strenv(service_name)].ports[env(i)] | type' "$compose_file" 2>/dev/null)
+            local container_port=""
+
+            if [[ "$port_type" == "!!map" ]]; then
+                # Long-form: extract target field
+                container_port=$(service_name="$service_name" i="$i" yq eval '.services[strenv(service_name)].ports[env(i)].target' "$compose_file" 2>/dev/null)
+            else
+                # Short-form: extract container port
+                local port_str=$(service_name="$service_name" i="$i" yq eval '.services[strenv(service_name)].ports[env(i)]' "$compose_file" 2>/dev/null)
+                container_port="${port_str##*:}"
+                container_port="${container_port%%/*}"
+            fi
+
+            if [[ -z "$container_port" ]] || [[ "$container_port" == "null" ]]; then
+                continue
+            fi
+
+            service_name="$service_name" container_port="$container_port" port_index="$port_index" yq eval '.services[strenv(service_name)].x-casaos.ports[env(port_index)].container = strenv(container_port)' -i "$compose_file" 2>/dev/null || true
+            service_name="$service_name" container_port="$container_port" port_index="$port_index" yq eval '.services[strenv(service_name)].x-casaos.ports[env(port_index)].description.en_US = ("Container Port: " + strenv(container_port))' -i "$compose_file" 2>/dev/null || true
+            port_index=$((port_index + 1))
+        done
+        
+    done <<< "$all_services"
+    
+    # Convert named volumes to CasaOS bind mounts
+    # Only convert if there are named volumes defined at the top level
+    local volume_names=$(yq eval '.volumes | keys | .[]' "$compose_file" 2>/dev/null || echo "")
+    
+    if [[ -n "$volume_names" ]]; then
+        # Load platform-specific volume mappings from app.json if they exist
+        local volume_mappings_json=$(jq -c '.compatibility.casaos.volume_mappings // {}' "$app_dir/app.json" 2>/dev/null)
+        
+        # Get all service names
+        local all_services=$(yq eval '.services | keys | .[]' "$compose_file")
+        
+        # For each service
+        while IFS= read -r service_name; do
+            [[ -z "$service_name" ]] && continue
+            
+            # For each named volume, convert references in this service to CasaOS bind mounts
+            while IFS= read -r vol_name; do
+                [[ -z "$vol_name" ]] && continue
+                
+                # Get the count of volumes in this service
+                local vol_count=$(service_name="$service_name" yq eval '.services[strenv(service_name)].volumes | length' "$compose_file" 2>/dev/null || echo "0")
+
+                for ((j=0; j<vol_count; j++)); do
+                    local vol_type=$(service_name="$service_name" j="$j" yq eval '.services[strenv(service_name)].volumes[env(j)] | type' "$compose_file" 2>/dev/null)
+                    local container_path=""
+                    local is_match=false
+
+                    if [[ "$vol_type" == "!!map" ]]; then
+                        # Long-form: check if .source matches the named volume
+                        local vol_source=$(service_name="$service_name" j="$j" yq eval '.services[strenv(service_name)].volumes[env(j)].source' "$compose_file" 2>/dev/null)
+                        if [[ "$vol_source" == "$vol_name" ]]; then
+                            container_path=$(service_name="$service_name" j="$j" yq eval '.services[strenv(service_name)].volumes[env(j)].target' "$compose_file" 2>/dev/null)
+                            if [[ "$container_path" == /* ]] || [[ "$container_path" == ./* ]]; then
+                                is_match=true
+                            else
+                                container_path=""
+                            fi
+                        fi
+                    else
+                        local vol_entry=$(service_name="$service_name" j="$j" yq eval '.services[strenv(service_name)].volumes[env(j)]' "$compose_file")
+                        # Skip if this is already a bind mount (starts with / or ./)
+                        if [[ "$vol_entry" == /* ]] || [[ "$vol_entry" == ./* ]]; then
+                            continue
+                        fi
+                        # Check if this volume entry uses the named volume
+                        if [[ "$vol_entry" == "${vol_name}:"* ]]; then
+                            container_path="${vol_entry#*:}"
+                            local mount_options=""
+                            if [[ "$container_path" == *":ro" ]]; then
+                                mount_options=":ro"
+                                container_path="${container_path%:ro}"
+                            elif [[ "$container_path" == *":rw" ]]; then
+                                mount_options=":rw"
+                                container_path="${container_path%:rw}"
+                            fi
+                            container_path="${container_path%%:*}"
+                            if [[ "$container_path" == /* ]] || [[ "$container_path" == ./* ]]; then
+                                is_match=true
+                            else
+                                container_path=""
+                            fi
+                        fi
+                    fi
+
+                    if [[ "$is_match" == true ]] && [[ -n "$container_path" ]] && [[ "$container_path" != "null" ]]; then
+                        # Check if there's a custom mapping for this volume
+                        local custom_mapping=$(echo "$volume_mappings_json" | jq -r --arg vol "$vol_name" '.[$vol] // empty')
+
+                        local casaos_path
+                        if [[ -n "$custom_mapping" && "$custom_mapping" != "null" ]]; then
+                            # Use the custom mapping from app.json
+                            casaos_path="${custom_mapping}:${container_path}${mount_options}"
+                        else
+                            # Fall back to default conversion logic
+                            # Convert volume name to a simple folder name (remove app prefix if exists)
+                            local folder_suffix="${vol_name#*_}"  # Remove prefix before underscore
+                            [[ "$folder_suffix" == "$vol_name" ]] && folder_suffix="${vol_name}"
+
+                            # Convert underscores to slashes for nested paths (e.g., data_work -> data/work)
+                            folder_suffix="${folder_suffix//_//}"
+
+                            casaos_path="/DATA/AppData/\$AppID/${folder_suffix}:${container_path}${mount_options}"
+                        fi
+
+                        # Replace the volume entry with a short-form bind mount string
+                        service_name="$service_name" j="$j" casaos_path="$casaos_path" yq eval '.services[strenv(service_name)].volumes[env(j)] = strenv(casaos_path)' -i "$compose_file"
+                    fi
+                done
+            done <<< "$volume_names"
+        done <<< "$all_services"
+        
+        # Remove the volumes section at the top level (named volumes are no longer needed)
+        yq eval 'del(.volumes)' -i "$compose_file"
+    fi
+    
+    # Remove empty arrays that CasaOS cannot validate (cap_add, devices, command)
+    yq eval 'del(.services[].cap_add | select(length == 0))' -i "$compose_file" 2>/dev/null || true
+    yq eval 'del(.services[].devices | select(length == 0))' -i "$compose_file" 2>/dev/null || true
+    yq eval 'del(.services[].command | select(length == 0))' -i "$compose_file" 2>/dev/null || true
+
+    # Get platform-specific YouTube (or fall back to global)
+    local platform_youtube=$(jq -r '.compatibility.casaos.youtube // ""' "$app_dir/app.json")
+    local youtube_url="${platform_youtube:-$APP_YOUTUBE}"
+    
+    # Create config.json for CasaOS using jq
+    jq -n \
+        --arg id "$APP_ID" \
+        --arg version "$APP_VERSION" \
+        --arg image "$APP_MAIN_IMAGE" \
+        --arg youtube "$youtube_url" \
+        --arg docs_link "$APP_DOCS" \
+        '{
+            id: $id,
+            version: $version,
+            image: $image,
+            youtube: $youtube,
+            docs_link: $docs_link
+        }' > "$output_dir/config.json"
+    
+    # Validate generated files
+    if ! validate_yaml_syntax "$compose_file"; then
+        print_error "Generated docker-compose.yml for $app_name (CasaOS) has invalid YAML!"
+        print_error "File: $compose_file"
+        yq eval '.' "$compose_file" 2>&1 | head -10
+        TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+        return 1
+    fi
+    
+    if ! jq empty "$output_dir/config.json" 2>/dev/null; then
+        print_error "Generated config.json for $app_name (CasaOS) has invalid JSON!"
+        print_error "Validation error:"
+        jq empty "$output_dir/config.json" 2>&1
+        TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+        return 1
+    fi
+    
+    print_success "Converted $app_name for CasaOS"
+}
+
+# Convert to Portainer format
+convert_to_portainer() {
+    local app_name="$1"
+    local app_dir="$2"
+    local master_file="$OUTPUT_DIR/portainer/templates.json"
+    
+    local folder_name=$(get_platform_folder_name "$app_dir" "portainer")
+    local output_dir="$OUTPUT_DIR/portainer/$folder_name"
+    
+    if [[ "$DRY_RUN" == "true" ]]; then
+        print_info "DRY RUN: Would convert $app_name to Portainer format (folder: $folder_name)"
+        return
+    fi
+    
+    mkdir -p "$output_dir"
+    
+    # Create docker-compose with named volumes
+    adjust_compose_for_platform "$app_dir/docker-compose.yml" "$output_dir/docker-compose.yml" "portainer" "$app_name"
+    
+    # Validate docker-compose.yml
+    if ! validate_yaml_syntax "$output_dir/docker-compose.yml"; then
+        print_error "Generated docker-compose.yml for $app_name (Portainer) has invalid YAML!"
+        print_error "File: $output_dir/docker-compose.yml"
+        yq eval '.' "$output_dir/docker-compose.yml" 2>&1 | head -10
+        TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+        return 1
+    fi
+    
+    # Ensure logo URL has proper extension, use placeholder if empty or invalid
+    local logo_url="$APP_ICON"
+    if [[ -z "$logo_url" ]] || ! [[ "$logo_url" =~ \.(png|jpg|jpeg|svg|webp|gif)$ ]]; then
+        logo_url="https://cdn.jsdelivr.net/gh/bigbeartechworld/big-bear-universal-apps/apps/_example/logo.jpg"
+    fi
+    
+    # Get template ID
+    local template_id
+    if [[ -f "$OUTPUT_DIR/portainer/.template_id_counter" ]]; then
+        template_id=$(cat "$OUTPUT_DIR/portainer/.template_id_counter")
+        echo $((template_id + 1)) > "$OUTPUT_DIR/portainer/.template_id_counter"
+    else
+        template_id=1
+        echo "2" > "$OUTPUT_DIR/portainer/.template_id_counter"
+    fi
+    
+    # Escape JSON strings - order matters! Backslashes first, then quotes, then control chars
+    local title_json="${APP_NAME}"
+    local desc_json="${APP_DESCRIPTION}"
+    local tag_json="${APP_TAGLINE}"
+    
+    # Escape backslashes first
+    title_json="${title_json//\\/\\\\}"
+    desc_json="${desc_json//\\/\\\\}"
+    tag_json="${tag_json//\\/\\\\}"
+    
+    # Then escape quotes
+    title_json="${title_json//\"/\\\"}"
+    desc_json="${desc_json//\"/\\\"}"
+    tag_json="${tag_json//\"/\\\"}"
+    
+    # Then escape control characters
+    title_json="${title_json//$'\n'/\\n}"
+    title_json="${title_json//$'\r'/\\r}"
+    title_json="${title_json//$'\t'/\\t}"
+    
+    desc_json="${desc_json//$'\n'/\\n}"
+    desc_json="${desc_json//$'\r'/\\r}"
+    desc_json="${desc_json//$'\t'/\\t}"
+    
+    tag_json="${tag_json//$'\n'/\\n}"
+    tag_json="${tag_json//$'\r'/\\r}"
+    tag_json="${tag_json//$'\t'/\\t}"
+    
+    # Build environment variables JSON
+    local env_json=""
+    local env_count=$(echo "$APP_ENV_VARS" | jq 'length')
+    for ((i=0; i<env_count; i++)); do
+        local env_name=$(echo "$APP_ENV_VARS" | jq -r ".[$i].name")
+        local env_default=$(echo "$APP_ENV_VARS" | jq -r ".[$i].default // \"\"")
+        local env_desc=$(echo "$APP_ENV_VARS" | jq -r ".[$i].description")
+        
+        # Escape backslashes first
+        env_default="${env_default//\\/\\\\}"
+        env_desc="${env_desc//\\/\\\\}"
+        
+        # Then escape quotes
+        env_default="${env_default//\"/\\\"}"
+        env_desc="${env_desc//\"/\\\"}"
+        
+        # Then escape control characters
+        env_default="${env_default//$'\n'/\\n}"
+        env_default="${env_default//$'\r'/\\r}"
+        env_default="${env_default//$'\t'/\\t}"
+        
+        env_desc="${env_desc//$'\n'/\\n}"
+        env_desc="${env_desc//$'\r'/\\r}"
+        env_desc="${env_desc//$'\t'/\\t}"
+        
+        if [[ $i -gt 0 ]]; then
+            env_json+=",
+"
+        fi
+        env_json+="        {\"name\": \"$env_name\", \"label\": \"$env_name\", \"description\": \"$env_desc\", \"default\": \"$env_default\"}"
+    done
+    
+    # Create template entry
+    local template_entry=$(cat << EOF
+    {
+      "id": $template_id,
+      "type": 3,
+      "title": "$title_json",
+      "name": "$APP_ID",
+      "description": "$desc_json",
+      "note": "$tag_json",
+      "categories": ["$APP_CATEGORY", "selfhosted"],
+      "platform": "linux",
+      "logo": "$logo_url",
+      "repository": {
+        "url": "https://github.com/bigbeartechworld/big-bear-portainer",
+        "stackfile": "Apps/$app_name/docker-compose.yml"
+      }$(if [[ -n "$env_json" ]]; then echo ",
+      \"env\": [
+$env_json
+      ]"; fi)
+    }
+EOF
+)
+    
+    # Save individual template and validate JSON
+    local temp_template="{\"version\": \"3\", \"templates\": [$template_entry]}"
+    echo "$temp_template" > "$output_dir/template.json"
+    
+    # Validate individual template JSON
+    if ! jq empty "$output_dir/template.json" 2>/dev/null; then
+        print_error "Generated template for $app_name has invalid JSON!"
+        print_error "Validation error:"
+        jq empty "$output_dir/template.json" 2>&1
+        print_error "Template entry that failed:"
+        echo "$template_entry" | head -20
+        TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+        return 1
+    fi
+    
+    # Append to master template
+    echo "$template_entry," >> "$master_file"
+    
+    print_success "Converted $app_name for Portainer"
+}
+
+resolve_runtipi_main_image() {
+    local source_compose="$1"
+    local main_image="$2"
+    local app_name="$3"
+    local fallback="$4"
+
+    local images=""
+    if [[ -f "$source_compose" ]]; then
+        images=$(yq eval '.services | to_entries | .[] | select(.value.image != null) | .key + " " + .value.image' "$source_compose" 2>/dev/null || echo "")
+    fi
+
+    local matched=""
+    local matched_service=""
+    local match_count=0
+
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        local svc="${line%% *}"
+        local img="${line#* }"
+        [[ -z "$img" ]] && continue
+
+        local repo="${img%%@*}"
+        local last_segment="${repo##*/}"
+        if [[ "$last_segment" == *:* ]]; then
+            repo="${repo%:*}"
+        fi
+
+        if [[ "$repo" == "$main_image" ]]; then
+            matched="${matched}${img}"$'\n'
+            match_count=$((match_count + 1))
+            [[ -z "$matched_service" ]] && matched_service="$svc"
+        fi
+    done <<< "$images"
+
+    local distinct=0
+    if [[ -n "$matched" ]]; then
+        distinct=$(printf '%s' "$matched" | sort -u | grep -c . || true)
+        distinct="${distinct:-0}"
+    fi
+
+    if [[ "$match_count" -ge 1 && "$distinct" -eq 1 ]]; then
+        local resolved="${matched%%$'\n'*}"
+        if [[ "$VERBOSE" == "true" ]]; then
+            echo "  DEBUG: runtipi resolved image='$resolved' (service='$matched_service')" >&2
+        fi
+        echo "$resolved"
+        return 0
+    fi
+
+    print_warning "runtipi: could not resolve main image for $app_name from docker-compose.yml (main_image='$main_image'); falling back to $fallback (no digest pin)" >&2
+    echo "$fallback"
+    return 0
+}
+
+runtipi_follow_service_rename() {
+    local compose_file="$1"
+    local old_name="$2"
+    local new_name="$3"
+    [[ -z "$old_name" || "$old_name" == "null" || "$old_name" == "$new_name" ]] && return 0
+
+    local dep_svcs dep_svc dep_type dep_len di
+    dep_svcs=$(yq eval '.services | keys | .[]' "$compose_file")
+    while IFS= read -r dep_svc; do
+        [[ -z "$dep_svc" ]] && continue
+        dep_type=$(yq eval ".services[\"$dep_svc\"].depends_on | type" "$compose_file" 2>/dev/null || echo "null")
+        if [[ "$dep_type" == "!!map" ]] && [[ "$(yq eval ".services[\"$dep_svc\"].depends_on | has(\"$old_name\")" "$compose_file")" == "true" ]]; then
+            yq eval ".services[\"$dep_svc\"].depends_on.\"$new_name\" = .services[\"$dep_svc\"].depends_on.\"$old_name\" | del(.services[\"$dep_svc\"].depends_on.\"$old_name\")" -i "$compose_file"
+        elif [[ "$dep_type" == "!!seq" ]]; then
+            dep_len=$(yq eval ".services[\"$dep_svc\"].depends_on | length" "$compose_file")
+            for ((di=0; di<dep_len; di++)); do
+                if [[ "$(yq eval ".services[\"$dep_svc\"].depends_on[$di]" "$compose_file")" == "$old_name" ]]; then
+                    yq eval ".services[\"$dep_svc\"].depends_on[$di] = \"$new_name\"" -i "$compose_file"
+                fi
+            done
+        fi
+        local link_type
+        link_type=$(yq eval ".services[\"$dep_svc\"].links | type" "$compose_file" 2>/dev/null || echo "null")
+        if [[ "$link_type" == "!!seq" ]]; then
+            dep_len=$(yq eval ".services[\"$dep_svc\"].links | length" "$compose_file")
+            for ((di=0; di<dep_len; di++)); do
+                local link_item
+                link_item=$(yq eval ".services[\"$dep_svc\"].links[$di]" "$compose_file")
+                if [[ "$link_item" == "$old_name" ]]; then
+                    yq eval ".services[\"$dep_svc\"].links[$di] = \"$new_name\"" -i "$compose_file"
+                elif [[ "$link_item" == "$old_name:"* ]]; then
+                    yq eval ".services[\"$dep_svc\"].links[$di] = \"${new_name}:${link_item#"$old_name:"}\"" -i "$compose_file"
+                fi
+            done
+        fi
+    done <<< "$dep_svcs"
+
+    local old_re
+    old_re=$(printf '%s' "$old_name" | sed 's/[][(){}.^$|*+?\\]/\\&/g')
+    yq eval "(.. | select(tag == \"!!str\")) |= sub(\"(https?://)${old_re}(:|/|$)\"; \"\${1}${new_name}\${2}\")" -i "$compose_file"
+    yq eval "(.. | select(tag == \"!!str\")) |= sub(\"=${old_re}$\"; \"=${new_name}\")" -i "$compose_file"
+    yq eval "(.. | select(tag == \"!!str\" and . == \"${old_name}\")) |= \"${new_name}\"" -i "$compose_file"
+}
+
+# Convert to Runtipi format
+convert_to_runtipi() {
+    local app_name="$1"
+    local app_dir="$2"
+    
+    local folder_name=$(get_platform_folder_name "$app_dir" "runtipi")
+    local output_dir="$OUTPUT_DIR/runtipi/$folder_name"
+    
+    if [[ "$DRY_RUN" == "true" ]]; then
+        print_info "DRY RUN: Would convert $app_name to Runtipi format (folder: $folder_name)"
+        return
+    fi
+    
+    mkdir -p "$output_dir/metadata"
+    
+    # Copy and modify docker-compose
+    cp "$app_dir/docker-compose.yml" "$output_dir/docker-compose.yml"
+    local compose_file="$output_dir/docker-compose.yml"
+    
+    # Remove the 'name' field for Runtipi
+    yq eval 'del(.name)' -i "$compose_file"
+    
+    # Rename main service to app_name
+    local services="${APP_MAIN_SERVICE:-}"
+    if [[ -z "$services" || "$services" == "null" ]] || [[ "$(yq eval ".services | has(\"$services\")" "$compose_file")" != "true" ]]; then
+        services=$(yq eval '.services | keys | .[0]' "$compose_file")
+    fi
+    if [[ "$services" != "$app_name" ]]; then
+        yq eval ".services.\"$app_name\" = .services.\"$services\" | del(.services.\"$services\")" -i "$compose_file"
+        runtipi_follow_service_rename "$compose_file" "$services" "$app_name"
+    fi
+    
+    # Set container name
+    yq eval ".services[\"$app_name\"].container_name = \"$app_name\"" -i "$compose_file"
+    
+    # Convert labels from array to object format if needed (some apps use array syntax)
+    # Check if labels exists and is an array
+    local labels_type=$(yq eval ".services[\"$app_name\"].labels | type" "$compose_file" 2>/dev/null || echo "null")
+    if [[ "$labels_type" == "!!seq" ]]; then
+        # Convert array format (- key=value) to object format (key: value)
+        local temp_labels=$(yq eval ".services[\"$app_name\"].labels" "$compose_file" | sed 's/^- //' | awk -F= '{print $1 ": \"" $2 "\""}' 2>/dev/null || echo "")
+        if [[ -n "$temp_labels" ]]; then
+            yq eval ".services[\"$app_name\"].labels = {}" -i "$compose_file"
+            while IFS= read -r label; do
+                if [[ -n "$label" && "$label" =~ : ]]; then
+                    local key=$(echo "$label" | cut -d: -f1 | xargs)
+                    local value=$(echo "$label" | cut -d: -f2- | xargs | sed 's/^"//' | sed 's/"$//')
+                    if [[ -n "$key" ]]; then
+                        yq eval ".services[\"$app_name\"].labels[\"$key\"] = \"$value\"" -i "$compose_file" 2>/dev/null || true
+                    fi
+                fi
+            done <<< "$temp_labels"
+        fi
+    fi
+    
+    # Add runtipi.managed label to ALL services
+    local all_services=$(yq eval '.services | keys | .[]' "$compose_file")
+    while IFS= read -r service_name; do
+        [[ -z "$service_name" ]] && continue
+        
+        # Convert labels from array to object format if needed for this service
+        local labels_type=$(yq eval ".services[\"$service_name\"].labels | type" "$compose_file" 2>/dev/null || echo "null")
+        if [[ "$labels_type" == "!!seq" ]]; then
+            # Convert array format (- key=value) to object format (key: value)
+            local temp_labels=$(yq eval ".services[\"$service_name\"].labels[]" "$compose_file" 2>/dev/null || echo "")
+            if [[ -n "$temp_labels" ]]; then
+                yq eval ".services[\"$service_name\"].labels = {}" -i "$compose_file"
+                while IFS= read -r label; do
+                    if [[ -n "$label" && "$label" =~ = ]]; then
+                        local key=$(echo "$label" | cut -d= -f1)
+                        local value=$(echo "$label" | cut -d= -f2-)
+                        if [[ -n "$key" ]]; then
+                            yq eval ".services[\"$service_name\"].labels[\"$key\"] = \"$value\"" -i "$compose_file" 2>/dev/null || true
+                        fi
+                    fi
+                done <<< "$temp_labels"
+            fi
+        fi
+        
+        # Now add the runtipi.managed label
+        yq eval ".services[\"$service_name\"].labels[\"runtipi.managed\"] = \"true\"" -i "$compose_file" 2>/dev/null || true
+    done <<< "$all_services"
+    
+    # Replace all networks with tipi_main_network only (skip for certain apps)
+    local network_exceptions=("pihole" "tailscale" "homeassistant" "plex")
+    local skip_network=false
+    for exception in "${network_exceptions[@]}"; do
+        if [[ "$app_name" == "$exception" ]]; then
+            skip_network=true
+            break
+        fi
+    done
+    
+    if [[ "$skip_network" == "false" ]]; then
+        # Remove all custom networks from services and set only tipi_main_network
+        all_services=$(yq eval '.services | keys | .[]' "$compose_file")
+        while IFS= read -r service_name; do
+            [[ -z "$service_name" ]] && continue
+            # Replace networks with only tipi_main_network
+            yq eval ".services[\"$service_name\"].networks = [\"tipi_main_network\"]" -i "$compose_file"
+        done <<< "$all_services"
+        
+        # Remove all custom networks and add only tipi_main_network
+        yq eval 'del(.networks) | .networks.tipi_main_network.external = true' -i "$compose_file"
+    fi
+    
+    # Convert named volumes to ${APP_DATA_DIR} bind mounts for Runtipi
+    local volume_names=$(yq eval '.volumes | keys | .[]' "$compose_file" 2>/dev/null || echo "")
+    
+    if [[ -n "$volume_names" ]]; then
+        # Load platform-specific volume mappings from app.json if they exist
+        local volume_mappings_json=$(jq -c '.compatibility.runtipi.volume_mappings // {}' "$app_dir/app.json" 2>/dev/null)
+        
+        # Get all service names
+        local all_services=$(yq eval '.services | keys | .[]' "$compose_file")
+        
+        # For each service
+        while IFS= read -r service_name; do
+            [[ -z "$service_name" ]] && continue
+            
+            # For each named volume, convert references in this service to Runtipi bind mounts
+            while IFS= read -r vol_name; do
+                [[ -z "$vol_name" ]] && continue
+                
+                # Get the count of volumes in this service
+                local vol_count=$(yq eval ".services.$service_name.volumes | length" "$compose_file" 2>/dev/null || echo "0")
+                
+                for ((j=0; j<vol_count; j++)); do
+                    # Check if this is long-form syntax (has a 'source' key)
+                    local vol_source=$(yq eval ".services.$service_name.volumes[$j].source" "$compose_file" 2>/dev/null)
+                    
+                    if [[ -n "$vol_source" && "$vol_source" != "null" ]]; then
+                        # Long-form syntax
+                        if [[ "$vol_source" == "$vol_name" ]]; then
+                            # Check if there's a custom mapping for this volume
+                            local custom_mapping=$(echo "$volume_mappings_json" | jq -r --arg vol "$vol_name" '.[$vol] // empty')
+                            
+                            local runtipi_source
+                            if [[ -n "$custom_mapping" && "$custom_mapping" != "null" ]]; then
+                                # Use the custom mapping from app.json
+                                runtipi_source="\${APP_DATA_DIR}/${custom_mapping}"
+                            else
+                                # Fall back to default conversion logic
+                                runtipi_source="\${APP_DATA_DIR}/data/${vol_name}"
+                            fi
+                            
+                            # This is a named volume reference, convert to ${APP_DATA_DIR}
+                            yq eval ".services.$service_name.volumes[$j].source = \"$runtipi_source\"" -i "$compose_file"
+                        fi
+                    else
+                        # Short-form syntax
+                        local vol_entry=$(yq eval ".services.$service_name.volumes[$j]" "$compose_file")
+                        
+                        # Check if this volume entry uses the named volume
+                        if [[ "$vol_entry" == "${vol_name}:"* ]]; then
+                            # Extract container path
+                            local container_path="${vol_entry#*:}"
+                            # Remove any trailing options (e.g., :ro, :rw)
+                            local mount_options=""
+                            if [[ "$container_path" == *":ro" ]]; then
+                                mount_options=":ro"
+                                container_path="${container_path%:ro}"
+                            elif [[ "$container_path" == *":rw" ]]; then
+                                mount_options=":rw"
+                                container_path="${container_path%:rw}"
+                            fi
+                            
+                            # Check if there's a custom mapping for this volume
+                            local custom_mapping=$(echo "$volume_mappings_json" | jq -r --arg vol "$vol_name" '.[$vol] // empty')
+                            
+                            local runtipi_path
+                            if [[ -n "$custom_mapping" && "$custom_mapping" != "null" ]]; then
+                                # Use the custom mapping from app.json
+                                runtipi_path="\${APP_DATA_DIR}/${custom_mapping}:${container_path}${mount_options}"
+                            else
+                                # Fall back to default conversion logic
+                                runtipi_path="\${APP_DATA_DIR}/data/${vol_name}:${container_path}${mount_options}"
+                            fi
+                            
+                            # Replace the volume entry
+                            yq eval ".services.$service_name.volumes[$j] = \"$runtipi_path\"" -i "$compose_file"
+                        fi
+                    fi
+                done
+            done <<< "$volume_names"
+        done <<< "$all_services"
+        
+        # Remove the volumes section at the top level (named volumes are no longer needed)
+        yq eval 'del(.volumes)' -i "$compose_file"
+    fi
+    
+    # Convert relative path volumes to ${APP_DATA_DIR} format
+    local all_services=$(yq eval '.services | keys | .[]' "$compose_file")
+    while IFS= read -r service_name; do
+        [[ -z "$service_name" ]] && continue
+        
+        local vol_count=$(yq eval ".services.$service_name.volumes | length" "$compose_file" 2>/dev/null || echo "0")
+        
+        for ((j=0; j<vol_count; j++)); do
+            local vol_entry=$(yq eval ".services.$service_name.volumes[$j]" "$compose_file")
+            
+            # Check if this is a relative path volume (starts with ./)
+            if [[ "$vol_entry" == "./"* ]]; then
+                # Extract the path after ./
+                local relative_path="${vol_entry#./}"
+                local container_path="${relative_path#*:}"
+                local host_path="${relative_path%%:*}"
+                
+                # Remove any trailing options (e.g., :ro, :rw)
+                local mount_options=""
+                if [[ "$container_path" == *":ro" ]]; then
+                    mount_options=":ro"
+                    container_path="${container_path%:ro}"
+                elif [[ "$container_path" == *":rw" ]]; then
+                    mount_options=":rw"
+                    container_path="${container_path%:rw}"
+                fi
+                
+                # Convert to ${APP_DATA_DIR} format
+                local runtipi_path="\${APP_DATA_DIR}/${host_path}:${container_path}${mount_options}"
+                
+                # Replace the volume entry
+                yq eval ".services.$service_name.volumes[$j] = \"$runtipi_path\"" -i "$compose_file"
+            fi
+        done
+    done <<< "$all_services"
+    
+    # Convert ports to use ${APP_PORT} for the main service
+    # Get all service names
+    local all_services=$(yq eval '.services | keys | .[]' "$compose_file")
+    while IFS= read -r service_name; do
+        [[ -z "$service_name" ]] && continue
+        
+        # Only convert ports for the main service (app_name)
+        if [[ "$service_name" == "$app_name" ]]; then
+            local port_count=$(yq eval ".services.$service_name.ports | length" "$compose_file" 2>/dev/null || echo "0")
+            
+            for ((p=0; p<port_count; p++)); do
+                # Check if this is long-form syntax (has a 'target' key)
+                local port_target=$(yq eval ".services.$service_name.ports[$p].target" "$compose_file" 2>/dev/null)
+                
+                if [[ -n "$port_target" && "$port_target" != "null" ]]; then
+                    # Long-form syntax - update the published port to use ${APP_PORT}
+                    yq eval ".services.$service_name.ports[$p].published = \"\${APP_PORT}\"" -i "$compose_file"
+                else
+                    # Short-form syntax
+                    local port_entry=$(yq eval ".services.$service_name.ports[$p]" "$compose_file")
+                    
+                    # Extract container port from port entry (after the colon)
+                    local container_port="${port_entry#*:}"
+                    # Remove any protocol suffix (e.g., /tcp, /udp)
+                    local protocol=""
+                    if [[ "$container_port" == *"/tcp" ]]; then
+                        protocol="/tcp"
+                        container_port="${container_port%/tcp}"
+                    elif [[ "$container_port" == *"/udp" ]]; then
+                        protocol="/udp"
+                        container_port="${container_port%/udp}"
+                    fi
+                    
+                    # Convert to ${APP_PORT}:container_port format
+                    local runtipi_port="\${APP_PORT}:${container_port}${protocol}"
+                    
+                    # Replace the port entry
+                    yq eval ".services.$service_name.ports[$p] = \"$runtipi_port\"" -i "$compose_file"
+                fi
+                
+                # Only convert the first port mapping to use ${APP_PORT}
+                break
+            done
+        fi
+    done <<< "$all_services"
+    
+    # Determine port - use platform-specific port if defined, otherwise use default
+    local runtipi_port="${PORT_RUNTIPI:-${APP_DEFAULT_PORT:-8080}}"
+    # Only process port if it's a valid number and no platform-specific port is set
+    if [[ -z "$PORT_RUNTIPI" ]] && [[ "$runtipi_port" =~ ^[0-9]+$ ]] && [[ "$runtipi_port" -le 999 ]]; then
+        case "$runtipi_port" in
+            80) runtipi_port=8080 ;;
+            443) runtipi_port=8443 ;;
+            *) runtipi_port=$((runtipi_port + 8000)) ;;
+        esac
+    fi
+    
+    # Create docker-compose.json using jq
+    local runtipi_main_image
+    runtipi_main_image=$(resolve_runtipi_main_image "$app_dir/docker-compose.yml" "$APP_MAIN_IMAGE" "$app_name" "$APP_MAIN_IMAGE:$APP_VERSION")
+
+    jq -n \
+        --arg name "$app_name" \
+        --arg image "$runtipi_main_image" \
+        --argjson port "$runtipi_port" \
+        '{
+            schemaVersion: 2,
+            services: [
+                {
+                    name: $name,
+                    image: $image,
+                    internalPort: $port,
+                    isMain: true
+                }
+            ]
+        }' > "$output_dir/docker-compose.json"
+    
+    # Create config.json using jq
+    local current_timestamp=$(($(date +%s) * 1000))
+    local category_mapped=$(map_runtipi_category "$APP_CATEGORY")
+    jq -n \
+        --arg name "$APP_NAME" \
+        --argjson port "$runtipi_port" \
+        --arg id "$APP_ID" \
+        --arg description "$APP_DESCRIPTION" \
+        --arg version "$APP_VERSION" \
+        --arg category "$category_mapped" \
+        --arg short_desc "$APP_TAGLINE" \
+        --arg author "$APP_AUTHOR" \
+        --arg source "$APP_REPOSITORY" \
+        --arg website "$APP_HOMEPAGE" \
+        --argjson architectures "$APP_ARCHITECTURES" \
+        --argjson created_at "$current_timestamp" \
+        --argjson updated_at "$current_timestamp" \
+        '{
+            name: $name,
+            available: true,
+            port: $port,
+            exposable: true,
+            dynamic_config: true,
+            id: $id,
+            description: $description,
+            tipi_version: 1,
+            version: $version,
+            categories: [$category],
+            short_desc: $short_desc,
+            author: $author,
+            source: $source,
+            website: $website,
+            supported_architectures: $architectures,
+            created_at: $created_at,
+            updated_at: $updated_at,
+            "$schema": "../app-info-schema.json",
+            min_tipi_version: "4.5.0"
+        }' > "$output_dir/config.json"
+    
+    # Create description
+    echo "$APP_DESCRIPTION" > "$output_dir/metadata/description.md"
+    
+    # Download and convert icon
+    if [[ -n "$APP_ICON" ]]; then
+        if curl -fsSL "$APP_ICON" -o "$output_dir/metadata/logo_temp" 2>/dev/null; then
+            if command -v convert &> /dev/null; then
+                if ! convert "$output_dir/metadata/logo_temp" "$output_dir/metadata/logo.jpg" 2>/dev/null; then
+                    create_placeholder_logo "$output_dir/metadata/logo.jpg"
+                fi
+                rm -f "$output_dir/metadata/logo_temp"
+            else
+                mv "$output_dir/metadata/logo_temp" "$output_dir/metadata/logo.jpg"
+            fi
+        else
+            create_placeholder_logo "$output_dir/metadata/logo.jpg"
+        fi
+    else
+        create_placeholder_logo "$output_dir/metadata/logo.jpg"
+    fi
+    
+    # Validate generated files
+    if ! validate_yaml_syntax "$compose_file"; then
+        print_error "Generated docker-compose.yml for $app_name (Runtipi) has invalid YAML!"
+        print_error "File: $compose_file"
+        yq eval '.' "$compose_file" 2>&1 | head -10
+        TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+        return 1
+    fi
+    
+    if ! jq empty "$output_dir/docker-compose.json" 2>/dev/null; then
+        print_error "Generated docker-compose.json for $app_name (Runtipi) has invalid JSON!"
+        print_error "Validation error:"
+        jq empty "$output_dir/docker-compose.json" 2>&1
+        TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+        return 1
+    fi
+    
+    if ! jq empty "$output_dir/config.json" 2>/dev/null; then
+        print_error "Generated config.json for $app_name (Runtipi) has invalid JSON!"
+        print_error "Validation error:"
+        jq empty "$output_dir/config.json" 2>&1
+        TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+        return 1
+    fi
+    
+    print_success "Converted $app_name for Runtipi"
+}
+
+# Convert to Dockge format
+convert_to_dockge() {
+    local app_name="$1"
+    local app_dir="$2"
+    
+    local folder_name=$(get_platform_folder_name "$app_dir" "dockge")
+    local output_dir="$OUTPUT_DIR/dockge/$folder_name"
+    
+    if [[ "$DRY_RUN" == "true" ]]; then
+        print_info "DRY RUN: Would convert $app_name to Dockge format (folder: $folder_name)"
+        return
+    fi
+    
+    mkdir -p "$output_dir"
+    
+    # Copy compose and add big-bear- prefix to volumes
+    adjust_compose_for_platform "$app_dir/docker-compose.yml" "$output_dir/compose.yaml" "dockge" "$app_name"
+    
+    # Create metadata.json using jq to properly escape all strings
+    jq -n \
+        --arg name "$APP_NAME" \
+        --arg description "$APP_DESCRIPTION" \
+        --arg version "$APP_VERSION" \
+        --arg author "$APP_AUTHOR" \
+        --arg icon "$APP_ICON" \
+        --arg image "$APP_MAIN_IMAGE" \
+        --arg category "$APP_CATEGORY" \
+        --arg port "$APP_DEFAULT_PORT" \
+        --arg documentation "$APP_DOCS" \
+        --arg source "$APP_REPOSITORY" \
+        '{
+            name: $name,
+            description: $description,
+            version: $version,
+            author: $author,
+            icon: $icon,
+            image: $image,
+            category: $category,
+            port: $port,
+            documentation: $documentation,
+            source: $source
+        }' > "$output_dir/metadata.json"
+    
+    # Validate generated files
+    if ! validate_yaml_syntax "$output_dir/compose.yaml"; then
+        print_error "Generated compose.yaml for $app_name (Dockge) has invalid YAML!"
+        print_error "File: $output_dir/compose.yaml"
+        yq eval '.' "$output_dir/compose.yaml" 2>&1 | head -10
+        TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+        return 1
+    fi
+    
+    if ! jq empty "$output_dir/metadata.json" 2>/dev/null; then
+        print_error "Generated metadata.json for $app_name (Dockge) has invalid JSON!"
+        print_error "Validation error:"
+        jq empty "$output_dir/metadata.json" 2>&1
+        TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+        return 1
+    fi
+    
+    print_success "Converted $app_name for Dockge"
+}
+
+# Cosmos CreateService types entrypoint and command as strings, then
+# strings.Fields the value. Exec-form arrays 400 (DS003). Token lists
+# join. Whitespace-bearing /bin/sh -c scripts cannot round-trip through
+# Fields: persist the original script on the first volume target so
+# recreate/auto-update still find it, and wait on that path.
+cosmos_is_shell() {
+    case "$1" in
+        /bin/sh|sh|/bin/bash|bash) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+cosmos_volume_target_ok() {
+    local vol="$1" target="$2"
+    [[ -z "$target" || "$target" == "null" || "$target" != /* || "$target" == *[[:space:]]* ]] && return 1
+    [[ "$target" == "/var/run/docker.sock" || "$target" == "/run/docker.sock" ]] && return 1
+    [[ "$vol" == *":ro" || "$vol" == *":ro,"* ]] && return 1
+    return 0
+}
+
+cosmos_persist_dir() {
+    local compose_file="$1" service_name="$2"
+    local n i vtype vol target
+    n=$(service_name="$service_name" yq eval '.services[strenv(service_name)].volumes | length' "$compose_file" 2>/dev/null || echo "0")
+    [[ "$n" == "null" || -z "$n" ]] && n=0
+    for ((i=0; i<n; i++)); do
+        vtype=$(service_name="$service_name" i="$i" yq eval '.services[strenv(service_name)].volumes[env(i)] | type' "$compose_file" 2>/dev/null || echo "null")
+        vol=""
+        target=""
+        if [[ "$vtype" == "!!map" ]]; then
+            target=$(service_name="$service_name" i="$i" yq eval '.services[strenv(service_name)].volumes[env(i)].target // ""' "$compose_file")
+            vol=$(service_name="$service_name" i="$i" yq eval '.services[strenv(service_name)].volumes[env(i)].read_only // ""' "$compose_file")
+            [[ "$vol" == "true" ]] && continue
+        elif [[ "$vtype" == "!!str" ]]; then
+            vol=$(service_name="$service_name" i="$i" yq eval '.services[strenv(service_name)].volumes[env(i)] // ""' "$compose_file")
+            target=$(printf '%s' "$vol" | awk -F: '{if (NF>=2) print $2; else print $1}')
+        else
+            continue
+        fi
+        if cosmos_volume_target_ok "$vol" "$target"; then
+            printf '%s' "$target"
+            return
+        fi
+    done
+}
+
+cosmos_safe_service_name() {
+    local raw="$1" safe
+    safe=$(printf '%s' "$raw" | sed 's/[^A-Za-z0-9._-]/-/g')
+    [[ -z "$safe" ]] && safe="svc"
+    printf '%s' "$safe"
+}
+
+cosmos_ensure_persist_volume() {
+    local compose_file="$1" app_name="$2" service_name="$3"
+    local vol_name mount
+    vol_name="cosmos-run-$(cosmos_safe_service_name "$app_name")-$(cosmos_safe_service_name "$service_name")"
+    mount="${vol_name}:/var/lib/cosmos-run"
+    service_name="$service_name" mount="$mount" yq eval '.services[strenv(service_name)].volumes += [strenv(mount)]' -i "$compose_file"
+    vol_name="$vol_name" yq eval '.volumes[strenv(vol_name)].driver = "local"' -i "$compose_file"
+}
+
+cosmos_stringify_seq_field() {
+    local compose_file="$1" service_name="$2" field="$3"
+    local joined
+    joined=$(service_name="$service_name" field="$field" yq eval '.services[strenv(service_name)][strenv(field)] | join(" ")' "$compose_file")
+    service_name="$service_name" field="$field" joined="$joined" yq eval '.services[strenv(service_name)][strenv(field)] = strenv(joined)' -i "$compose_file"
+}
+
+cosmos_persist_sh_c_script() {
+    local compose_file="$1" app_name="$2" service_name="$3" script="$4"
+    local persist run_file wait_ep seed
+    persist=$(cosmos_persist_dir "$compose_file" "$service_name")
+    if [[ -z "$persist" ]]; then
+        cosmos_ensure_persist_volume "$compose_file" "$app_name" "$service_name"
+        persist="/var/lib/cosmos-run"
+    fi
+    script="${script//\$\$/\$}"
+    run_file="${persist}/.cosmos-run"
+    seed="mkdir -p ${persist}
+cat > ${run_file}.tmp <<'BB_COSMOS_RUN'
+#!/bin/sh
+${script}
+BB_COSMOS_RUN
+chmod +x ${run_file}.tmp
+mv ${run_file}.tmp ${run_file}"
+    wait_ep="/bin/sh -c until(cat<${run_file})2>/dev/null;do(IFS=,;s=\$1;\$s);done;IFS=,;z=\$2;\$z dummy sleep,1 exec,${run_file}"
+    service_name="$service_name" wait_ep="$wait_ep" yq eval '.services[strenv(service_name)].entrypoint = strenv(wait_ep)' -i "$compose_file"
+    service_name="$service_name" seed="$seed" yq eval '.services[strenv(service_name)].post_install[0] = strenv(seed)' -i "$compose_file"
+    service_name="$service_name" yq eval 'del(.services[strenv(service_name)].command)' -i "$compose_file"
+}
+
+adapt_compose_exec_for_cosmos() {
+    local compose_file="$1"
+    local app_name="$2"
+    local service_name ep_type cmd_type ep0 ep1 ep2 cmd0 cmd1 cmd2 adapted
+
+    local all_services
+    all_services=$(yq eval '.services | keys | .[]' "$compose_file" 2>/dev/null || echo "")
+
+    while IFS= read -r service_name; do
+        [[ -z "$service_name" ]] && continue
+        adapted=0
+
+        ep_type=$(service_name="$service_name" yq eval '.services[strenv(service_name)].entrypoint | type' "$compose_file" 2>/dev/null || echo "null")
+        if [[ "$ep_type" == "!!seq" ]]; then
+            ep0=$(service_name="$service_name" yq eval '.services[strenv(service_name)].entrypoint[0] // ""' "$compose_file")
+            ep1=$(service_name="$service_name" yq eval '.services[strenv(service_name)].entrypoint[1] // ""' "$compose_file")
+            ep2=$(service_name="$service_name" yq eval '.services[strenv(service_name)].entrypoint[2] // ""' "$compose_file")
+            if cosmos_is_shell "$ep0" && [[ "$ep1" == "-c" && "$ep2" == *[[:space:]]* ]]; then
+                cosmos_persist_sh_c_script "$compose_file" "$app_name" "$service_name" "$ep2"
+                adapted=1
+            else
+                cosmos_stringify_seq_field "$compose_file" "$service_name" "entrypoint"
+            fi
+        fi
+
+        [[ "$adapted" -eq 1 ]] && continue
+
+        cmd_type=$(service_name="$service_name" yq eval '.services[strenv(service_name)].command | type' "$compose_file" 2>/dev/null || echo "null")
+        if [[ "$cmd_type" == "!!seq" ]]; then
+            cmd0=$(service_name="$service_name" yq eval '.services[strenv(service_name)].command[0] // ""' "$compose_file")
+            cmd1=$(service_name="$service_name" yq eval '.services[strenv(service_name)].command[1] // ""' "$compose_file")
+            cmd2=$(service_name="$service_name" yq eval '.services[strenv(service_name)].command[2] // ""' "$compose_file")
+            if [[ "$cmd0" == "-c" && "$cmd1" == *[[:space:]]* ]]; then
+                cosmos_persist_sh_c_script "$compose_file" "$app_name" "$service_name" "$cmd1"
+            elif cosmos_is_shell "$cmd0" && [[ "$cmd1" == "-c" && "$cmd2" == *[[:space:]]* ]]; then
+                cosmos_persist_sh_c_script "$compose_file" "$app_name" "$service_name" "$cmd2"
+            else
+                cosmos_stringify_seq_field "$compose_file" "$service_name" "command"
+            fi
+        fi
+    done <<< "$all_services"
+}
+
+# Convert to Cosmos format
+convert_to_cosmos() {
+    local app_name="$1"
+    local app_dir="$2"
+    
+    local folder_name=$(get_platform_folder_name "$app_dir" "cosmos")
+    local output_dir="$OUTPUT_DIR/cosmos/$folder_name"
+    
+    if [[ "$DRY_RUN" == "true" ]]; then
+        print_info "DRY RUN: Would convert $app_name to Cosmos format (folder: $folder_name)"
+        return
+    fi
+    
+    mkdir -p "$output_dir"
+    
+    # Create temporary compose file with big-bear- prefix
+    local temp_compose=$(mktemp)
+    adjust_compose_for_platform "$app_dir/docker-compose.yml" "$temp_compose" "cosmos" "$app_name"
+    adapt_compose_exec_for_cosmos "$temp_compose" "$app_name"
+    
+    # Escape APP_NAME for JSON in routes
+    local name_for_routes="${APP_NAME}"
+    name_for_routes="${name_for_routes//\\/\\\\}"
+    name_for_routes="${name_for_routes//\"/\\\"}"
+    name_for_routes="${name_for_routes//$'\n'/\\n}"
+    name_for_routes="${name_for_routes//$'\r'/\\r}"
+    name_for_routes="${name_for_routes//$'\t'/\\t}"
+    
+    # Create cosmos-compose.json with routes
+    local cosmos_port="${PORT_COSMOS:-$APP_DEFAULT_PORT}"
+    # Ensure port is a single value (take first port if multiple)
+    cosmos_port=$(echo "$cosmos_port" | head -1 | tr -d '\n\r')
+    local routes=""
+    if [[ -n "$cosmos_port" ]]; then
+        routes="\"routes\": [
+        {
+          \"name\": \"$name_for_routes\",
+          \"description\": \"Web UI\",
+          \"useHost\": true,
+          \"target\": \"http://$app_name:$cosmos_port\",
+          \"mode\": \"SERVAPP\",
+          \"Timeout\": 14400000,
+          \"ThrottlePerMinute\": 12000,
+          \"BlockCommonBots\": true,
+          \"BlockAPIAbuse\": true
+        }
+      ],"
+    fi
+    
+    cat > "$output_dir/cosmos-compose.json" << EOF
+{
+  "cosmos-installer": {
+    $routes
+    "services": {
+      "$app_name": $(yq eval -o=json ".services.[\"$APP_MAIN_SERVICE\"] // (.services | to_entries[0].value)" "$temp_compose")
+    }
+  }
+}
+EOF
+    
+    # Use icon URL or logo URL for image and icon fields
+    local image_url="${APP_ICON:-${APP_LOGO:-https://cdn.jsdelivr.net/gh/bigbeartechworld/big-bear-universal-apps/apps/_example/logo.jpg}}"
+    
+    # Create description.json using jq to properly escape all strings
+    jq -n \
+        --arg name "$APP_NAME" \
+        --arg description "$APP_DESCRIPTION" \
+        --arg url "$APP_HOMEPAGE" \
+        --argjson tags "$APP_TAGS" \
+        --arg repository "${APP_REPOSITORY:-https://github.com/bigbeartechworld}" \
+        --arg image "$image_url" \
+        --argjson architectures "$APP_ARCHITECTURES" \
+        '{
+            name: $name,
+            description: $description,
+            url: $url,
+            longDescription: $description,
+            tags: $tags,
+            repository: $repository,
+            image: $image,
+            supported_architectures: $architectures,
+            icon: $image
+        }' > "$output_dir/description.json"
+    
+    # Create config.json using jq
+    jq -n \
+        --arg id "$app_name" \
+        --arg version "$APP_VERSION" \
+        --arg image "$APP_MAIN_IMAGE" \
+        --arg youtube "${APP_YOUTUBE:-}" \
+        --arg docs_link "${APP_DOCUMENTATION:-}" \
+        '{
+            id: $id,
+            version: $version,
+            image: $image,
+            youtube: $youtube,
+            docs_link: $docs_link,
+            big_bear_cosmos_youtube: ""
+        }' > "$output_dir/config.json"
+    
+    # Create docker-compose.yml for Cosmos
+    # Start with the temp compose and prepend cosmos-installer
+    {
+        echo "cosmos-installer: null"
+        cat "$temp_compose"
+        echo "minVersion: 0.14.0"
+    } > "$output_dir/docker-compose.yml"
+    
+    # Clean up temporary file - do this AFTER using it for docker-compose.yml
+    rm -f "$temp_compose"
+    
+    # Download icon
+    if [[ -n "$APP_ICON" ]]; then
+        if curl -fsSL "$APP_ICON" -o "$output_dir/icon_temp" 2>/dev/null; then
+            # Try to convert to PNG if ImageMagick is available
+            if command -v convert &> /dev/null; then
+                if convert "$output_dir/icon_temp" "$output_dir/icon.png" 2>/dev/null; then
+                    rm -f "$output_dir/icon_temp"
+                else
+                    # If conversion fails, just rename to .png
+                    mv "$output_dir/icon_temp" "$output_dir/icon.png"
+                fi
+            else
+                # No ImageMagick, just rename to .png
+                mv "$output_dir/icon_temp" "$output_dir/icon.png"
+            fi
+        else
+            # If download fails, create placeholder
+            if command -v convert &> /dev/null; then
+                convert -size 512x512 xc:gray "$output_dir/icon.png" 2>/dev/null || touch "$output_dir/icon.png"
+            else
+                touch "$output_dir/icon.png"
+            fi
+        fi
+    else
+        # No icon URL, create placeholder
+        if command -v convert &> /dev/null; then
+            convert -size 512x512 xc:gray "$output_dir/icon.png" 2>/dev/null || touch "$output_dir/icon.png"
+        else
+            touch "$output_dir/icon.png"
+        fi
+    fi
+    
+    # Validate generated files
+    if ! jq empty "$output_dir/cosmos-compose.json" 2>/dev/null; then
+        print_error "Generated cosmos-compose.json for $app_name (Cosmos) has invalid JSON!"
+        print_error "Validation error:"
+        jq empty "$output_dir/cosmos-compose.json" 2>&1
+        TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+        return 1
+    fi
+    
+    if ! jq empty "$output_dir/description.json" 2>/dev/null; then
+        print_error "Generated description.json for $app_name (Cosmos) has invalid JSON!"
+        print_error "Validation error:"
+        jq empty "$output_dir/description.json" 2>&1
+        TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+        return 1
+    fi
+    
+    if ! jq empty "$output_dir/config.json" 2>/dev/null; then
+        print_error "Generated config.json for $app_name (Cosmos) has invalid JSON!"
+        print_error "Validation error:"
+        jq empty "$output_dir/config.json" 2>&1
+        TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+        return 1
+    fi
+    
+    if ! yq eval '.' "$output_dir/docker-compose.yml" > /dev/null 2>&1; then
+        print_error "Generated docker-compose.yml for $app_name (Cosmos) has invalid YAML!"
+        TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+        return 1
+    fi
+    
+    print_success "Converted $app_name for Cosmos (config.json, description.json, docker-compose.yml, cosmos-compose.json)"
+}
+
+# Convert to Umbrel format
+convert_to_umbrel() {
+    local app_name="$1"
+    local app_dir="$2"
+    
+    # Validate app_name is not empty
+    if [[ -z "$app_name" ]]; then
+        print_error "Cannot convert to Umbrel: app_name is empty"
+        TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+        return 1
+    fi
+    
+    # Get the folder name from compatibility settings (defaults to big-bear-umbrel-{app_id})
+    local folder_name=$(get_platform_folder_name "$app_dir" "umbrel")
+    
+    # If no override, or if folder_name is empty/null, use the default Umbrel naming convention
+    if [[ "$folder_name" == "$app_name" ]] || [[ -z "$folder_name" ]] || [[ "$folder_name" == "null" ]]; then
+        folder_name="big-bear-umbrel-$app_name"
+    fi
+    
+    # Final validation: ensure folder_name is valid
+    if [[ -z "$folder_name" ]] || [[ "$folder_name" == "null" ]]; then
+        print_error "Cannot convert $app_name to Umbrel: invalid folder_name"
+        TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+        return 1
+    fi
+    
+    local output_dir="$OUTPUT_DIR/umbrel/$folder_name"
+    
+    if [[ "$DRY_RUN" == "true" ]]; then
+        print_info "DRY RUN: Would convert $app_name to Umbrel format (folder: $folder_name)"
+        return
+    fi
+    
+    mkdir -p "$output_dir"
+    
+    # Check if main service uses network_mode: host early
+    local uses_host_network=false
+    local main_service_for_check="${APP_MAIN_SERVICE:-app}"
+    if [[ -z "$main_service_for_check" || "$main_service_for_check" == "null" ]]; then
+        main_service_for_check=$(yq eval '.services | keys | .[0]' "$app_dir/docker-compose.yml" 2>/dev/null || echo "app")
+    fi
+    local network_mode_check
+    network_mode_check=$(yq eval ".services[\"$main_service_for_check\"].network_mode // \"\"" "$app_dir/docker-compose.yml" 2>/dev/null)
+    if [[ "$network_mode_check" == "host" ]]; then
+        uses_host_network=true
+        echo "  ℹ App uses network_mode: host"
+    fi
+    
+    # Umbrel base port for safer port allocation (avoids common 8000s conflicts)
+    local UMBREL_BASE_PORT=10000
+    
+    # Check if platform-specific port override exists
+    local use_port_override=false
+    if [[ -n "$PORT_UMBREL" ]]; then
+        use_port_override=true
+    fi
+    
+    # Check if there's a platform-specific app_port override for the container port
+    local use_app_port_override=false
+    if [[ -n "$APP_PORT_UMBREL" ]]; then
+        use_app_port_override=true
+    fi
+    
+    # Extract ports from docker-compose.yml if available
+    # For Umbrel we need TWO ports:
+    # 1. host_port (umbrel-app.yml "port" field) - unique public port
+    # 2. container_port (APP_PORT in docker-compose.yml) - internal port app listens on
+    local host_port="${PORT_UMBREL:-$APP_DEFAULT_PORT}"
+    local container_port="${APP_PORT_UMBREL:-$APP_DEFAULT_PORT}"
+    local port_spec=$(yq eval '.services[].ports[0]' "$app_dir/docker-compose.yml" 2>/dev/null | head -1)
+    
+    if [[ -n "$port_spec" && "$port_spec" != "null" ]]; then
+        if [[ "$port_spec" =~ ^[0-9]+:[0-9]+$ ]]; then
+            # Format: "host:container" - extract both sides
+            if [[ "$use_port_override" == false ]]; then
+                host_port=$(echo "$port_spec" | cut -d':' -f1)
+            fi
+            if [[ "$use_app_port_override" == false ]]; then
+                container_port=$(echo "$port_spec" | cut -d':' -f2)
+            fi
+        elif [[ "$port_spec" =~ ^[0-9]+$ ]]; then
+            # Format: just the port number - use for both
+            if [[ "$use_port_override" == false ]]; then
+                host_port="$port_spec"
+            fi
+            if [[ "$use_app_port_override" == false ]]; then
+                container_port="$port_spec"
+            fi
+        else
+            # Complex format (e.g., "8080:8000/tcp")
+            local clean_spec=$(echo "$port_spec" | sed 's|/.*||')
+            if [[ "$clean_spec" =~ : ]]; then
+                if [[ "$use_port_override" == false ]]; then
+                    host_port=$(echo "$clean_spec" | cut -d':' -f1)
+                fi
+                if [[ "$use_app_port_override" == false ]]; then
+                    container_port=$(echo "$clean_spec" | cut -d':' -f2)
+                fi
+            fi
+        fi
+    fi
+    
+    # Remap host_port to safer 10000+ range to avoid common port conflicts (unless port override is set)
+    # Keep container_port as-is (internal app port)
+    if [[ "$use_port_override" == false ]] && [[ "$host_port" =~ ^[0-9]+$ ]] && [[ "$host_port" -lt "$UMBREL_BASE_PORT" ]]; then
+        # Calculate sequential port from base
+        local port_map_file="$OUTPUT_DIR/umbrel/.port_sequence"
+        if [[ ! -f "$port_map_file" ]]; then
+            echo "$UMBREL_BASE_PORT" > "$port_map_file"
+        fi
+        
+        # Read next available port
+        local next_port=$(cat "$port_map_file")
+        host_port="$next_port"
+        
+        # Increment for next app
+        echo $((next_port + 1)) > "$port_map_file"
+    fi
+    
+    # Copy compose and process it
+    cp "$app_dir/docker-compose.yml" "$output_dir/docker-compose.yml"
+    
+    local temp_compose="$output_dir/docker-compose.tmp.yml"
+    
+    # Step 1: Add version: "3.7" at the top and remove incompatible Umbrel fields
+    # Remove: name, ports, container_name
+    # For network_mode: only delete if NOT set to "host" (host networking is valid for Umbrel)
+    yq eval 'del(.name) | 
+             del(.services[].ports) | 
+             del(.services[].container_name) | 
+             (.services[] | select(.network_mode != "host") | .network_mode) |= null |
+             del(.services[] | select(.network_mode == null) | .network_mode) |
+             . = {"version": "3.7"} + .' "$output_dir/docker-compose.yml" > "$temp_compose"
+    mv "$temp_compose" "$output_dir/docker-compose.yml"
+    
+    # Step 2: Remove all comments from the YAML file
+    # Remove blank lines but preserve all content (including # in values like dns ports)
+    # Comment removal was too aggressive and removed parts of values (e.g., 127.0.0.1#5353)
+    sed -E '/^[[:space:]]*$/d' "$output_dir/docker-compose.yml" > "$temp_compose"
+    mv "$temp_compose" "$output_dir/docker-compose.yml"
+    
+    # Get the main service name
+    local main_service="${APP_MAIN_SERVICE:-app}"
+    if [[ -z "$main_service" || "$main_service" == "null" ]]; then
+        main_service=$(yq eval '.services | keys | .[0]' "$output_dir/docker-compose.yml" 2>/dev/null || echo "app")
+    fi
+    
+    # Check if main service uses network_mode: host
+    local uses_host_network=false
+    local network_mode_value
+    network_mode_value=$(yq eval ".services[\"$main_service\"].network_mode // \"\"" "$output_dir/docker-compose.yml" 2>/dev/null)
+    if [[ "$network_mode_value" == "host" ]]; then
+        uses_host_network=true
+        echo "  ℹ App uses network_mode: host, skipping app_proxy service"
+    fi
+    
+    # Step 3: Add or update app_proxy service (only if not using host networking)
+    # APP_HOST: container name that proxy connects to
+    # APP_PORT: container's internal port (what the app listens on inside the container)
+    if [[ "$uses_host_network" == "false" ]]; then
+        local has_app_proxy=$(yq eval '.services.app_proxy // "null"' "$output_dir/docker-compose.yml" 2>/dev/null)
+        if [[ "$has_app_proxy" != "null" ]]; then
+            # Update existing app_proxy and remove empty volumes if present
+            yq eval "del(.services.app_proxy.volumes) | 
+                     .services.app_proxy.environment.APP_HOST = \"${folder_name}_${main_service}_1\" | 
+                     .services.app_proxy.environment.APP_PORT = \"$container_port\"" "$output_dir/docker-compose.yml" > "$temp_compose"
+            mv "$temp_compose" "$output_dir/docker-compose.yml"
+        else
+            # Add new app_proxy service at the beginning of services
+            yq eval ".services = {\"app_proxy\": {\"environment\": {\"APP_HOST\": \"${folder_name}_${main_service}_1\", \"APP_PORT\": \"$container_port\"}}} + .services" "$output_dir/docker-compose.yml" > "$temp_compose"
+            mv "$temp_compose" "$output_dir/docker-compose.yml"
+        fi
+
+        # app_proxy resolves APP_HOST only on Umbrel's default network (umbrel_main_network)
+        local svc="$main_service"
+        export svc
+        local networks_kind=$(yq eval '.services[strenv(svc)].networks | type' "$output_dir/docker-compose.yml" 2>/dev/null)
+        local has_default=$(yq eval '[.services[strenv(svc)].networks // [] | (select(type == "!!map") | keys) // (select(type == "!!seq")) | .[] | select(. == "default")] | length' "$output_dir/docker-compose.yml" 2>/dev/null)
+        if [[ "$networks_kind" == "!!seq" || "$networks_kind" == "!!map" ]] && [[ "$has_default" == "0" ]]; then
+            local append_expr='.services[strenv(svc)].networks += ["default"]'
+            [[ "$networks_kind" == "!!map" ]] && append_expr='.services[strenv(svc)].networks.default = null'
+            local network_temp=$(mktemp)
+            if yq eval "$append_expr" "$output_dir/docker-compose.yml" > "$network_temp" 2>/dev/null && [[ -s "$network_temp" ]]; then
+                mv "$network_temp" "$output_dir/docker-compose.yml"
+            else
+                rm -f "$network_temp"
+                print_error "$app_name: failed to attach main service to Umbrel default network"
+                TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+            fi
+        fi
+        unset svc
+    fi
+
+    # Convert named volumes to ${APP_DATA_DIR} bind mounts for Umbrel
+    # First, get list of named volumes
+    local named_volumes=$(yq eval '.volumes | keys | .[]' "$output_dir/docker-compose.yml" 2>/dev/null || echo "")
+    
+    # Check if there are volume mapping overrides in app.json compatibility.umbrel.volume_mappings
+    local has_volume_overrides=false
+    local volume_overrides=$(yq eval '.compatibility.umbrel.volume_mappings // {}' "$app_dir/app.json" 2>/dev/null)
+    if [[ "$volume_overrides" != "{}" && "$volume_overrides" != "null" ]]; then
+        has_volume_overrides=true
+        echo "  ℹ Using volume mapping overrides from app.json"
+    fi
+    
+    if [[ -n "$named_volumes" ]]; then
+        # For each service, replace volume references
+        while IFS= read -r vol_name; do
+            [[ -z "$vol_name" ]] && continue
+            
+            local clean_path
+            
+            # Check if there's a custom override for this volume
+            if [[ "$has_volume_overrides" == "true" ]]; then
+                clean_path=$(yq eval ".compatibility.umbrel.volume_mappings.\"$vol_name\" // \"\"" "$app_dir/app.json" 2>/dev/null)
+            fi
+            
+            # If no override found, use automatic conversion
+            if [[ -z "$clean_path" || "$clean_path" == "null" ]]; then
+                # Convert volume name to a proper path by replacing underscores with slashes
+                # e.g., "audiobookshelf_data_config" -> "data/config"
+                # Remove common app name prefixes to get cleaner paths
+                clean_path="$vol_name"
+                # Remove app-specific prefix (e.g., "audiobookshelf_" from "audiobookshelf_data_config")
+                # This preserves backward compatibility with existing Umbrel app structures
+                clean_path=$(echo "$clean_path" | sed -E "s/^[a-z0-9-]+_//")
+                # Convert remaining underscores to slashes for hierarchical paths
+                clean_path=$(echo "$clean_path" | tr '_' '/')
+            fi
+            
+            # Use sed to replace volume mounts in the file
+            # Pattern: "volume_name:/path" becomes "${APP_DATA_DIR}/clean_path:/path"
+            # Handle both quoted and unquoted volume references
+            sed -i.bak "s|: ${vol_name}:|: \${APP_DATA_DIR}/${clean_path}:|g" "$output_dir/docker-compose.yml"
+            sed -i.bak "s|- ${vol_name}:|- \${APP_DATA_DIR}/${clean_path}:|g" "$output_dir/docker-compose.yml"
+            sed -i.bak "s|: \"${vol_name}:|: \${APP_DATA_DIR}/${clean_path}:|g" "$output_dir/docker-compose.yml"
+            sed -i.bak "s|- \"${vol_name}:|- \${APP_DATA_DIR}/${clean_path}:|g" "$output_dir/docker-compose.yml"
+            rm -f "$output_dir/docker-compose.yml.bak"
+        done <<< "$named_volumes"
+        
+        # Remove any quotes around paths that contain slashes
+        # Pattern 1: Remove quotes immediately after the path: ${APP_DATA_DIR}/"path" -> ${APP_DATA_DIR}/path
+        sed -i.bak 's|\${APP_DATA_DIR}/"\([^"]*\)"|\${APP_DATA_DIR}/\1|g' "$output_dir/docker-compose.yml"
+        # Pattern 2: Remove trailing quotes before comments: /path" # comment -> /path # comment
+        sed -i.bak 's|\(\${APP_DATA_DIR}/[^"]*\)" #|\1 #|g' "$output_dir/docker-compose.yml"
+        # Pattern 3: Remove trailing quotes at end of line: /path" -> /path
+        sed -i.bak 's|\(\${APP_DATA_DIR}/[^"]*\)"$|\1|g' "$output_dir/docker-compose.yml"
+        rm -f "$output_dir/docker-compose.yml.bak"
+        
+        # Remove the volumes section entirely
+        yq eval 'del(.volumes)' "$output_dir/docker-compose.yml" > "$temp_compose"
+        mv "$temp_compose" "$output_dir/docker-compose.yml"
+        
+        # Also remove any empty volumes arrays from services (only if app_proxy exists)
+        if [[ "$uses_host_network" == "false" ]]; then
+            yq eval 'del(.services.app_proxy.volumes)' "$output_dir/docker-compose.yml" > "$temp_compose" 2>/dev/null || cp "$output_dir/docker-compose.yml" "$temp_compose"
+            mv "$temp_compose" "$output_dir/docker-compose.yml"
+        fi
+    fi
+    
+    # Convert CasaOS-style bind mounts to Umbrel format
+    # Replace /DATA/AppData/$AppID with ${APP_DATA_DIR}
+    sed -i.bak 's|/DATA/AppData/\$AppID|\${APP_DATA_DIR}|g' "$output_dir/docker-compose.yml"
+    rm -f "$output_dir/docker-compose.yml.bak"
+    
+    # Replace CasaOS IP placeholders with umbrel.local for Umbrel
+    # Handle various placeholder formats: [YOUR_CASAOS_IP], [YOUR_CASAOS_LAN_IP], etc.
+    # Also update the port to the Umbrel host_port
+    sed -i.bak "s|\[YOUR_CASAOS_IP\]|umbrel.local|g" "$output_dir/docker-compose.yml"
+    sed -i.bak "s|\[YOUR_CASAOS_LAN_IP\]|umbrel.local|g" "$output_dir/docker-compose.yml"
+    
+    # Replace common ports in URLs with the Umbrel host port
+    # This handles cases like http://umbrel.local:3000 -> http://umbrel.local:10139
+    local original_port="${APP_DEFAULT_PORT:-8080}"
+    if [[ "$host_port" != "$original_port" ]]; then
+        sed -i.bak "s|umbrel.local:${original_port}|umbrel.local:${host_port}|g" "$output_dir/docker-compose.yml"
+    fi
+    rm -f "$output_dir/docker-compose.yml.bak"
+    
+    # Create umbrel-app.yml with full app ID including prefix
+    # For network_mode: host apps, use container_port (the actual port the app binds to)
+    # For normal apps, use host_port (the remapped public port)
+    local umbrel_port
+    if [[ "$uses_host_network" == "true" ]]; then
+        umbrel_port="$container_port"
+        echo "  ℹ Using container port $container_port for umbrel-app.yml (network_mode: host)"
+    else
+        umbrel_port="$host_port"
+    fi
+    
+    # Quote tagline if it contains colon (common YAML issue)
+    local tagline_value="$APP_TAGLINE"
+    if [[ "$tagline_value" == *:* ]] || [[ "$tagline_value" == *\#* ]] || [[ "$tagline_value" == *\[* ]] || [[ "$tagline_value" == *\{* ]]; then
+        # Escape any existing quotes in the tagline
+        local escaped_tagline="${APP_TAGLINE//\"/\\\"}"
+        tagline_value="\"$escaped_tagline\""
+    fi
+    
+    # Clean description: replace literal \n with spaces and collapse multiple spaces
+    local clean_description=$(echo "$APP_DESCRIPTION" | tr '\n' ' ' | sed 's/  */ /g')
+    
+    # Debug: Print variables before creating umbrel-app.yml
+    if [[ "$VERBOSE" == "true" ]]; then
+        echo "  DEBUG: folder_name='$folder_name'"
+        echo "  DEBUG: APP_NAME='$APP_NAME'"
+        echo "  DEBUG: APP_VERSION='$APP_VERSION'"
+    fi
+    
+    cat > "$output_dir/umbrel-app.yml" << EOF
+manifestVersion: 1
+id: $folder_name
+category: $APP_CATEGORY
+name: $APP_NAME
+version: "$APP_VERSION"
+tagline: $tagline_value
+description: >-
+  $clean_description
+releaseNotes: >-
+  This version includes various improvements and bug fixes.
+developer: $APP_DEVELOPER
+website: $APP_HOMEPAGE
+dependencies: []
+repo: https://github.com/bigbeartechworld/big-bear-universal-apps
+support: https://github.com/bigbeartechworld/big-bear-universal-apps/issues
+port: $umbrel_port
+gallery:
+  - 1.jpg
+  - 2.jpg
+  - 3.jpg
+path: ""
+defaultUsername: ""
+defaultPassword: ""
+icon: $APP_ICON
+submitter: BigBearTechWorld
+submission: https://github.com/bigbeartechworld/big-bear-universal-apps
+EOF
+    
+    # Validate the generated umbrel-app.yml has a valid ID
+    local generated_id=$(yq eval '.id' "$output_dir/umbrel-app.yml" 2>/dev/null)
+    if [[ -z "$generated_id" ]] || [[ "$generated_id" == "null" ]]; then
+        print_error "Generated umbrel-app.yml for $app_name has invalid ID: '$generated_id'"
+        print_error "folder_name was: '$folder_name'"
+        print_error "Contents of umbrel-app.yml:"
+        head -20 "$output_dir/umbrel-app.yml" | sed 's/^/  /'
+        TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+        rm -rf "$output_dir"
+        return 1
+    fi
+    
+    # Create placeholder gallery images
+    for i in 1 2 3; do
+        create_placeholder_logo "$output_dir/$i.jpg"
+    done
+    
+    # Create data directory with .gitkeep (standard Umbrel app structure)
+    mkdir -p "$output_dir/data"
+    touch "$output_dir/data/.gitkeep"
+    
+    # Validate generated files
+    if ! validate_yaml_syntax "$output_dir/docker-compose.yml"; then
+        print_error "Generated docker-compose.yml for $app_name (Umbrel) has invalid YAML!"
+        print_error "File: $output_dir/docker-compose.yml"
+        yq eval '.' "$output_dir/docker-compose.yml" 2>&1 | head -10
+        TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+        return 1
+    fi
+    
+    if ! validate_yaml_syntax "$output_dir/umbrel-app.yml"; then
+        print_error "Generated umbrel-app.yml for $app_name (Umbrel) has invalid YAML!"
+        print_error "File: $output_dir/umbrel-app.yml"
+        yq eval '.' "$output_dir/umbrel-app.yml" 2>&1 | head -10
+        TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+        return 1
+    fi
+    
+    print_success "Converted $app_name for Umbrel"
+}
+
+# Convert a single app to all platforms
+convert_app() {
+    local app_name="$1"
+    local app_dir="$APPS_DIR/$app_name"
+    
+    # Skip the _example template app
+    if [[ "$app_name" == "_example" ]]; then
+        if [[ "$VERBOSE" == "true" ]]; then
+            print_info "Skipping _example template app"
+        fi
+        TOTAL_SKIPPED=$((TOTAL_SKIPPED + 1))
+        return 0
+    fi
+    
+    if ! validate_app "$app_name"; then
+        TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+        return 1
+    fi
+    
+    # Load metadata to get compatibility flags
+    load_app_metadata "$app_dir"
+    
+    print_info "Converting $app_name..."
+    
+    # Track if any platform was converted
+    local platforms_converted=0
+    
+    # Convert to each platform
+    for platform in "${PLATFORMS[@]}"; do
+        case "$platform" in
+            casaos)
+                if [[ "$COMPAT_CASAOS" == "true" ]]; then
+                    convert_to_casaos "$app_name" "$app_dir"
+                    platforms_converted=$((platforms_converted + 1))
+                else
+                    # Delete the directory if it exists and app is not supported
+                    local folder_name=$(get_platform_folder_name "$app_dir" "casaos")
+                    if [[ "$folder_name" == "$app_name" ]] || [[ -z "$folder_name" ]] || [[ "$folder_name" == "null" ]]; then
+                        folder_name="$app_name"
+                    fi
+                    local output_dir="$OUTPUT_DIR/casaos/$folder_name"
+                    if [[ -d "$output_dir" ]]; then
+                        rm -rf "$output_dir"
+                        if [[ "$VERBOSE" == "true" ]]; then
+                            print_info "$app_name: Removed unsupported CasaOS app directory"
+                        fi
+                    elif [[ "$VERBOSE" == "true" ]]; then
+                        print_info "$app_name: Skipping CasaOS (not supported)"
+                    fi
+                fi
+                ;;
+            portainer)
+                if [[ "$COMPAT_PORTAINER" == "true" ]]; then
+                    convert_to_portainer "$app_name" "$app_dir"
+                    platforms_converted=$((platforms_converted + 1))
+                else
+                    # Delete the directory if it exists and app is not supported
+                    local folder_name=$(get_platform_folder_name "$app_dir" "portainer")
+                    if [[ "$folder_name" == "$app_name" ]] || [[ -z "$folder_name" ]] || [[ "$folder_name" == "null" ]]; then
+                        folder_name="$app_name"
+                    fi
+                    local output_dir="$OUTPUT_DIR/portainer/$folder_name"
+                    if [[ -d "$output_dir" ]]; then
+                        rm -rf "$output_dir"
+                        if [[ "$VERBOSE" == "true" ]]; then
+                            print_info "$app_name: Removed unsupported Portainer app directory"
+                        fi
+                    elif [[ "$VERBOSE" == "true" ]]; then
+                        print_info "$app_name: Skipping Portainer (not supported)"
+                    fi
+                fi
+                ;;
+            runtipi)
+                if [[ "$COMPAT_RUNTIPI" == "true" ]]; then
+                    convert_to_runtipi "$app_name" "$app_dir"
+                    platforms_converted=$((platforms_converted + 1))
+                else
+                    # Delete the directory if it exists and app is not supported
+                    local folder_name=$(get_platform_folder_name "$app_dir" "runtipi")
+                    if [[ "$folder_name" == "$app_name" ]] || [[ -z "$folder_name" ]] || [[ "$folder_name" == "null" ]]; then
+                        folder_name="$app_name"
+                    fi
+                    local output_dir="$OUTPUT_DIR/runtipi/$folder_name"
+                    if [[ -d "$output_dir" ]]; then
+                        rm -rf "$output_dir"
+                        if [[ "$VERBOSE" == "true" ]]; then
+                            print_info "$app_name: Removed unsupported Runtipi app directory"
+                        fi
+                    elif [[ "$VERBOSE" == "true" ]]; then
+                        print_info "$app_name: Skipping Runtipi (not supported)"
+                    fi
+                fi
+                ;;
+            dockge)
+                if [[ "$COMPAT_DOCKGE" == "true" ]]; then
+                    convert_to_dockge "$app_name" "$app_dir"
+                    platforms_converted=$((platforms_converted + 1))
+                else
+                    # Delete the directory if it exists and app is not supported
+                    local folder_name=$(get_platform_folder_name "$app_dir" "dockge")
+                    if [[ "$folder_name" == "$app_name" ]] || [[ -z "$folder_name" ]] || [[ "$folder_name" == "null" ]]; then
+                        folder_name="$app_name"
+                    fi
+                    local output_dir="$OUTPUT_DIR/dockge/$folder_name"
+                    if [[ -d "$output_dir" ]]; then
+                        rm -rf "$output_dir"
+                        if [[ "$VERBOSE" == "true" ]]; then
+                            print_info "$app_name: Removed unsupported Dockge app directory"
+                        fi
+                    elif [[ "$VERBOSE" == "true" ]]; then
+                        print_info "$app_name: Skipping Dockge (not supported)"
+                    fi
+                fi
+                ;;
+            cosmos)
+                if [[ "$COMPAT_COSMOS" == "true" ]]; then
+                    convert_to_cosmos "$app_name" "$app_dir"
+                    platforms_converted=$((platforms_converted + 1))
+                else
+                    # Delete the directory if it exists and app is not supported
+                    local folder_name=$(get_platform_folder_name "$app_dir" "cosmos")
+                    if [[ "$folder_name" == "$app_name" ]] || [[ -z "$folder_name" ]] || [[ "$folder_name" == "null" ]]; then
+                        folder_name="$app_name"
+                    fi
+                    local output_dir="$OUTPUT_DIR/cosmos/$folder_name"
+                    if [[ -d "$output_dir" ]]; then
+                        rm -rf "$output_dir"
+                        if [[ "$VERBOSE" == "true" ]]; then
+                            print_info "$app_name: Removed unsupported Cosmos app directory"
+                        fi
+                    elif [[ "$VERBOSE" == "true" ]]; then
+                        print_info "$app_name: Skipping Cosmos (not supported)"
+                    fi
+                fi
+                ;;
+            umbrel)
+                if [[ "$COMPAT_UMBREL" == "true" ]]; then
+                    convert_to_umbrel "$app_name" "$app_dir"
+                    platforms_converted=$((platforms_converted + 1))
+                else
+                    # Delete the directory if it exists and app is not supported
+                    local folder_name=$(get_platform_folder_name "$app_dir" "umbrel")
+                    if [[ "$folder_name" == "$app_name" ]] || [[ -z "$folder_name" ]] || [[ "$folder_name" == "null" ]]; then
+                        folder_name="big-bear-umbrel-$app_name"
+                    fi
+                    local output_dir="$OUTPUT_DIR/umbrel/$folder_name"
+                    if [[ -d "$output_dir" ]]; then
+                        rm -rf "$output_dir"
+                        if [[ "$VERBOSE" == "true" ]]; then
+                            print_info "$app_name: Removed unsupported Umbrel app directory"
+                        fi
+                    elif [[ "$VERBOSE" == "true" ]]; then
+                        print_info "$app_name: Skipping Umbrel (not supported)"
+                    fi
+                fi
+                ;;
+            *)
+                print_warning "Unknown platform: $platform"
+                ;;
+        esac
+    done
+    
+    # Update counters based on whether any platforms were converted
+    if [[ $platforms_converted -gt 0 ]]; then
+        TOTAL_CONVERTED=$((TOTAL_CONVERTED + 1))
+    else
+        TOTAL_SKIPPED=$((TOTAL_SKIPPED + 1))
+    fi
+}
+
+# Print summary
+print_summary() {
+    echo ""
+    echo "========================================"
+    echo "       CONVERSION SUMMARY"
+    echo "========================================"
+    echo -e "${GREEN}Converted:${NC} $TOTAL_CONVERTED apps"
+    echo -e "${YELLOW}Skipped:${NC}   $TOTAL_SKIPPED apps"
+    echo -e "${RED}Errors:${NC}    $TOTAL_ERRORS apps"
+    echo "========================================"
+    echo ""
+    
+    if [[ "$DRY_RUN" == "true" ]]; then
+        print_info "This was a dry run. Use without --dry-run to apply changes."
+    fi
+}
+
+# Main function
+main() {
+    echo ""
+    echo "========================================"
+    echo "  Universal to Platform Converter"
+    echo "========================================"
+    echo ""
+    
+    print_info "Input directory:  $APPS_DIR"
+    print_info "Output directory: $OUTPUT_DIR"
+    print_info "Platforms:        ${PLATFORMS[*]}"
+    
+    if [[ "$DRY_RUN" == "true" ]]; then
+        print_warning "DRY RUN MODE - No changes will be made"
+    fi
+    
+    echo ""
+    
+    # Check dependencies
+    check_dependencies
+    
+    # Initialize directories
+    init_directories
+    
+    # Convert apps
+    if [[ -n "$SPECIFIC_APP" ]]; then
+        convert_app "$SPECIFIC_APP"
+    else
+        while IFS= read -r -d '' app_dir; do
+            app_name=$(basename "$app_dir")
+            convert_app "$app_name"
+        done < <(find "$APPS_DIR" -mindepth 1 -maxdepth 1 -type d -print0 | sort -z)
+    fi
+    
+    # Finalize platform-specific files
+    if [[ " ${PLATFORMS[*]} " =~ " portainer " ]]; then
+        finalize_portainer_master_template
+    fi
+    
+    # Print summary
+    print_summary
+    
+    # Exit with error if there were errors
+    if [[ $TOTAL_ERRORS -gt 0 ]]; then
+        exit 1
+    fi
+}
+
+if [[ "$SOURCE_ONLY" != "true" ]]; then
+# Run main
+main "$@"
+fi

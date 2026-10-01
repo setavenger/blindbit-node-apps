@@ -1,0 +1,56 @@
+version: 1
+
+metadata:
+  category: Bitcoin
+  name: Bitcoin Core
+  version: 29.2.0+nirvati.11
+  tagline: Run a Bitcoin node
+  implements: bitcoin
+  description: >-
+    Bitcoin Core.
+
+    This just runs Bitcoin Core, no web UI is included here.
+  developers:
+    The Bitcoin Core developers: https://bitcoincore.org/
+    Nirvati: https://nirvati.org/
+  repos:
+    Core: https://github.com/bitcoin/bitcoin
+  support: https://nirvati.org
+  path: /
+  icon: https://official-app-icons.nirvati.org/bitcoin-core/icon.svg
+  license: MIT
+  has_permissions:
+    - tor/proxy-requests
+  exposes_permissions:
+  - id: access-p2p
+    name: P2P API
+    description: Interact with the Bitcoin Core P2P API
+    services:
+      bitcoin:
+        - 8333
+  - id: access-rpc
+    name: JSON-RPC API
+    description: Interact with the Bitcoin Core JSON-RPC API
+    services:
+      gateway:
+        - 8332
+  - id: access-zmq
+    name: ZMQ API
+    description: Interact with the Bitcoin Core ZMQ API
+    services:
+      bitcoin:
+        - 28332
+        - 28333
+        - 28334
+        - 28335
+  ui_module:
+    menu_entries:
+      - name: Bitcoin
+        icon: i-bitcoin-icons-bitcoin-filled
+        path: /bitcoin
+  volumes:
+    config:
+      minimum_size: 20Mi
+      recommended_size:  100Mi
+      name: Configuration
+      description: Configuration for the authentication gateway

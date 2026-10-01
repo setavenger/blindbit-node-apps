@@ -1,0 +1,13 @@
+store_version: 1
+
+id: citadel
+name: Citadel app store
+tagline: Legacy apps from Citadel
+developers:
+  Nirvati UG (haftungsbeschränkt): https://nirvati.org
+license: AGPL-3.0-or-later
+icon: https://icons.runcitadel.space/app-stores/main.svg
+description: This app store contains the "old" Citadel apps.
+
+content:
+  v0.1.0: v5

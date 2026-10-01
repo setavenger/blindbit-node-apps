@@ -1,0 +1,14 @@
+# build outputs
+*.s9pk
+dist/
+build/
+node_modules/
+target/
+
+# local runtime data
+.data/
+*.key
+.env
+
+# upstream/ is a verbatim mirror: never ignore anything in it
+!upstream/**

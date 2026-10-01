@@ -1,0 +1,88 @@
+version: 1
+
+metadata:
+  {% if not n5i_has_feature(feature = "volume-types") or not n5i_has_feature(feature = "__nirvati/disable-encryption") %}
+  deprecated: true
+  {% endif %}
+  category: Bitcoin
+  name: Bitcoin Core
+  version: 29.2.0+nirvati.7
+  tagline: Run a Bitcoin node
+  implements: bitcoin
+  description: >-
+    Bitcoin Core.
+
+    This just runs Bitcoin Core, no web UI is included here.
+  developers:
+    The Bitcoin Core developers: https://bitcoincore.org/
+    Nirvati: https://nirvati.org/
+  repos:
+    Core: https://github.com/bitcoin/bitcoin
+  support: https://nirvati.org
+  path: /
+  icon: https://official-app-icons.nirvati.org/bitcoin-core/icon.svg
+  license: MIT
+  has_permissions:
+    - tor/proxy-requests
+  exposes_permissions:
+  - id: access-p2p
+    name: P2P API
+    description: Interact with the Bitcoin Core P2P API
+    services:
+      bitcoin:
+        - 8333
+  - id: access-rpc
+    name: JSON-RPC API
+    description: Interact with the Bitcoin Core JSON-RPC API
+    services:
+      gateway:
+        - 8332
+  - id: access-zmq
+    name: ZMQ API
+    description: Interact with the Bitcoin Core ZMQ API
+    services:
+      bitcoin:
+        - 28332
+        - 28333
+        - 28334
+        - 28335
+  ui_module:
+    menu_entries:
+      - name: Bitcoin
+        icon: i-bitcoin-icons-bitcoin-filled
+        path: /bitcoin
+  volumes:
+    blockchain:
+      minimum_size: 10Gi
+      recommended_size: 1Ti
+      name: Bitcoin chain
+      description: The main Bitcoin blockchain & indexes
+      access_policy: ReadWriteOncePod
+      nirvati_disable_encryption: true
+    data:
+      minimum_size: 25Mi
+      recommended_size: 1Gi
+      name: Other data
+      description: Any other data Bitcoin Core needs
+      access_policy: ReadWriteOnce
+    config:
+      minimum_size: 20Mi
+      recommended_size: 25Mi
+      name: Configuration
+      description: Configuration for the authentication gateway
+  settings:
+    prune:
+      name: Pruned mode
+      description: Only keep the "tip" of the blockchain and block headers. Uses less storage, but certain features and apps may not work anymore. Enter a number in Megabyte here to enable, otherwise leave it empty.
+      type: String
+      required: false
+    network:
+      name: Network
+      description: Bitcoin has various networks. For most users, mainnet is recommended. The other networks are primarily for testing purposes.
+      type: Enum
+      default: mainnet
+      values:
+          - mainnet
+          - testnet
+          - signet
+          - regtest

@@ -1,0 +1,63 @@
+# Environment variables
+
+Runtipi generates its runtime `.env` file on startup from your settings and the current installation state. In a default install that file is mounted into the container as `/data/.env`, so most changes should be made through [custom settings](/docs/guides/custom-settings) or [custom environment variables](/docs/guides/custom-environment-variables) instead of editing it directly.
+
+## Core environment variables
+
+| Variable                       | Description                                                                    |
+| ------------------------------ | ------------------------------------------------------------------------------ |
+| `INTERNAL_IP`                  | Internal IP address used for local links and non-exposed app access.           |
+| `ARCHITECTURE`                 | Detected CPU architecture used to filter compatible apps (`amd64` or `arm64`). |
+| `TIPI_VERSION`                 | Current Runtipi version.                                                       |
+| `ROOT_FOLDER_HOST`             | Host path used to resolve Runtipi's data directories.                          |
+| `DOMAIN`                       | Public domain used for the dashboard and exposed apps.                         |
+| `LOCAL_DOMAIN`                 | Local domain used for internal HTTPS access.                                   |
+| `NGINX_PORT`                   | HTTP port used by Traefik and the dashboard. Defaults to `80`.                 |
+| `NGINX_PORT_SSL`               | HTTPS port used by Traefik and the dashboard. Defaults to `443`.               |
+| `POSTGRES_HOST`                | PostgreSQL host.                                                               |
+| `POSTGRES_PORT`                | PostgreSQL port. Defaults to `5432`.                                           |
+| `POSTGRES_USERNAME`            | PostgreSQL username.                                                           |
+| `POSTGRES_PASSWORD`            | PostgreSQL password.                                                           |
+| `POSTGRES_DBNAME`              | PostgreSQL database name.                                                      |
+| `RABBITMQ_HOST`                | RabbitMQ host used by the internal job queue.                                  |
+| `RABBITMQ_USERNAME`            | RabbitMQ username.                                                             |
+| `RABBITMQ_PASSWORD`            | RabbitMQ password.                                                             |
+| `APPS_REPO_URL`                | Default app store repository URL.                                              |
+| `APPS_REPO_ID`                 | Legacy hash derived from the default app store URL. Kept for compatibility.    |
+| `RUNTIPI_APP_DATA_PATH`        | Host path backing the `app-data` directory.                                    |
+| `RUNTIPI_FORWARD_AUTH_URL`     | Forward-auth endpoint Traefik uses to protect apps.                            |
+| `TZ`                           | System timezone passed through to apps and services.                           |
+| `DNS_IP`                       | DNS server IP stored in settings for compatibility.                            |
+| `JWT_SECRET`                   | Secret used for CLI JWT authentication.                                        |
+| `DEMO_MODE`                    | Enables demo mode restrictions.                                                |
+| `GUEST_DASHBOARD`              | Allows guest access to the dashboard.                                          |
+| `ALLOW_ERROR_MONITORING`       | Enables anonymous crash reporting to Sentry after consent.                     |
+| `ALLOW_AUTO_THEMES`            | Enables seasonal automatic theme changes.                                      |
+| `PERSIST_TRAEFIK_CONFIG`       | Prevents Runtipi from overwriting Traefik config on restart.                   |
+| `QUEUE_TIMEOUT_IN_MINUTES`     | Timeout for background jobs and app lifecycle events.                          |
+| `ADVANCED_SETTINGS`            | Enables advanced settings in the dashboard.                                    |
+| `MAX_BACKUPS`                  | Maximum number of app backups to keep. `0` disables retention cleanup.         |
+| `LOG_LEVEL`                    | Backend log level.                                                             |
+| `THEME_BASE`                   | Dashboard base theme.                                                          |
+| `THEME_COLOR`                  | Dashboard accent color.                                                        |
+| `EXPERIMENTAL_INSECURE_COOKIE` | Disables secure cookie handling for debugging only.                            |
+
+## App-specific environment variables
+
+Each installed app also receives a generated `app.env` file with app-specific values.
+
+| Variable             | Description                                                       |
+| -------------------- | ----------------------------------------------------------------- |
+| `APP_URN`            | Full app identifier in `<app-id>:<store-slug>` format.            |
+| `APP_ID`             | Docker-safe app identifier in `<app-id>-<store-slug>` format.     |
+| `APP_NAME`           | App name portion of the URN.                                      |
+| `APP_STORE_ID`       | App store slug.                                                   |
+| `APP_PORT`           | Host port assigned to the app when a port is exposed.             |
+| `APP_DATA_DIR`       | Host path to the app's data directory.                            |
+| `APP_IMAGE_TAG`      | App image tag from `config.json`.                                 |
+| `APP_EXPOSED`        | Whether the app is publicly exposed.                              |
+| `APP_DOMAIN`         | Public domain, local domain, or `ip:port` used to reach the app.  |
+| `APP_HOST`           | Same as `APP_DOMAIN`, but without the port for local-only access. |
+| `APP_PROTOCOL`       | Protocol used to access the app (`http` or `https`).              |
+| `APP_LOCAL_DOMAIN`   | Local HTTPS domain when local exposure is enabled.                |
+| `APP_EXPOSED_DOMAIN` | Public domain when public exposure is enabled.                    |

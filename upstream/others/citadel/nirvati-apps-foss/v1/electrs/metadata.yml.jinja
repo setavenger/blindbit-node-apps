@@ -1,0 +1,43 @@
+version: 1
+
+metadata:
+  {% if n5i_has_feature(feature = "volume-types") and n5i_has_feature(feature = "__nirvati/disable-encryption") %}
+  deprecated: true
+  {% endif %}
+  name: Electrs
+  version: 0.10.10+nirvati.4
+  category: Bitcoin
+  tagline: Lightweight Electrum server
+  developers:
+    Roman Zeyde: https://github.com/romanz
+  has_permissions:
+    - bitcoin/access-rpc
+    - bitcoin/access-p2p
+  exposes_permissions:
+    - id: access-electrum
+      name: Electrum RPC
+      description: Interact with the Electrum RPC interface
+      services:
+        electrum:
+          - 50001
+  repos:
+    Electrs: https://github.com/romanz/electrs
+    Container: https://gitlab.com/nirvati-ug/citadel/containers/electrs
+  exported_data:
+    bitcoin:
+      info:
+        rpc_accounts:
+          - name: main
+  support: https://nirvati.org
+  icon: https://official-app-icons.nirvati.org/electrs/icon.svg
+  description: |-
+    Electrs is a lightweight Electrum server for personal use.
+    
+    It's slower than Fulcrum, but uses less CPU, RAM and disk space.
+  implements: electrum
+  volumes:
+    electrs:
+      minimum_size: 100Gi
+      recommended_size: 200Gi
+      name: Blockchain data
+      description: Blockchain data storage

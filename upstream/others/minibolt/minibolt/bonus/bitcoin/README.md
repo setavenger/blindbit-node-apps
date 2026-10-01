@@ -1,0 +1,69 @@
+---
+title: + Bitcoin
+nav_order: 2000
+parent: Bonus Section
+has_children: false
+has_toc: false
+icon: bitcoin
+layout:
+  width: default
+  title:
+    visible: true
+  description:
+    visible: false
+  tableOfContents:
+    visible: true
+  outline:
+    visible: true
+  pagination:
+    visible: true
+  metadata:
+    visible: true
+  tags:
+    visible: true
+  actions:
+    visible: true
+---
+
+# ₿itcoin
+
+## Bonus Section: ₿itcoin guides
+
+### Electrum servers
+
+* [**Electrs**](electrs.md) - an efficient re-implementation of Electrum Server in Rust
+* [**Frigate**](../../bonus-guides/bitcoin/frigate.md) - an Electrum server for Silent Payments
+
+### Signing apps
+
+#### Desktop
+
+* [**Electrum Wallet Desktop**](electrum-wallet-desktop.md) - a feature-rich desktop wallet for power users
+
+### Decentralized exchange
+
+* [**Bisq**](bisq.md) - a decentralized exchange desktop app connected to your node to privately buy and sell non-KYC bitcoins
+
+### Fun
+
+* [**Download the white paper**](white-paper.md) - download the Bitcoin white paper directly from your blockchain data
+
+### Payment processors
+
+* [**BTCPay Server**](../../bonus-guides/bitcoin/btcpay-server.md) - a free and open-source Bitcoin payment processor that allows you to accept Bitcoin without fees or intermediaries
+
+### Testnet
+
+* [**Running a Testnet MiniBolt node**](minibolt-on-testnet.md) - configure your MiniBolt for use on testnet
+
+### Bitcoin clients
+
+* [**Bitcoin Knots**](../../bonus-guides/bitcoin/bitcoin-knots.md) - an advanced Bitcoin Core fork with extra tools for enhanced functionality, rejecting spam and arbitrary data
+
+### Mining Pools
+
+* [**Public Pool**](../../bonus-guides/bitcoin/public-pool.md) - Fully Open Source Solo Bitcoin Mining Pool
+
+### Mempool explorers
+
+* [**Mempool**](../../bonus-guides/bitcoin/mempool.md) - a self-hosted Bitcoin blockchain and mempool visualizer/explorer

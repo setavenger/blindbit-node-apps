@@ -1,0 +1,113 @@
+version: 1
+
+secrets:
+  bitcoin-credentials:
+    string_data:
+      username: nirvati
+      password: {{ derive_entropy(identifier="bitcoin-rpc-password") }}
+
+containers:
+  main:
+    image: registry.nirvati.de/nirvati/bitcoin-dashboard:v0.1.1
+    ingress_port: 3000
+  api:
+    image: registry.nirvati.de/nirvati/bitcoin-manager:v0.1.3
+    path_prefix: /api
+    ingress_port: 80
+    service_account:
+      rules:
+        - apiGroups: ['']
+          resources: ['secrets']
+          verbs: ['get', 'create', 'patch']
+        - apiGroups: ['arti.nirvati.org']
+          resources: ['onionservices']
+          verbs: ['get']
+    mounts:
+      data:
+        data/bitcoin: /bitcoin
+    environment:
+      BIND_ADDRESS: "[::]:80"
+      RSA_KEY: {{ jwt_pubkey_base64 }}
+      APP_NS: {{user}}-bitcoin-core-v3
+      BITCOIN_RPC_USER:
+        secret: bitcoin-credentials
+        key: username
+      BITCOIN_RPC_PASSWORD:
+        secret: bitcoin-credentials
+        key: password
+      BITCOIN_RPC_URL: http://bitcoin:8332
+      BITCOIN_NETWORK: {{ settings.network }}
+      {% if settings.prune != "" %}
+      BITCOIN_PRUNE: "{{ settings.prune }}"
+      {% endif %}
+      EXPECTED_USERNAME: {{ user }}
+  bitcoin:
+    type: StatefulSet
+    image: registry.nirvati.de/apps/bitcoind:v29.2
+    user: "0"
+    environment:
+      NIRVATI_INITIALIZATION_LOCK:
+        secret: nirvati-initialized
+        key: dummy
+    mounts:
+      data:
+        data/bitcoin: /root/.bitcoin
+        {% if settings.network == "mainnet" %}
+        blockchain/blocks: /root/.bitcoin/blocks
+        blockchain/chainstate: /root/.bitcoin/chainstate
+        blockchain/indexes: /root/.bitcoin/indexes
+        {% else %}
+        blockchain/blocks: /root/.bitcoin/{{ settings.network }}/blocks
+        blockchain/chainstate: /root/.bitcoin/{{ settings.network }}/chainstate
+        blockchain/indexes: /root/.bitcoin/{{ settings.network }}/indexes
+        {% endif %}
+    internal_ports:
+      8332: 8332
+      8333: 8333
+      28332: 28332
+      28333: 28333
+      28334: 28334
+      28335: 28335
+    public_ports:
+      8333: 8333
+  gateway:
+    image: registry.nirvati.de/nirvati/bitcoin-rpc-proxy:v0.1.0
+    command: /bitcoin-rpc-proxy /config/accounts.json
+    environment:
+      BITCOIN_RPC_TARGET: bitcoin.bitcoin-core-v3.{{ user }}.nirvati:8332
+      BITCOIN_RPC_USER:
+        secret: bitcoin-credentials
+        key: username
+      BITCOIN_RPC_PASSWORD:
+        secret: bitcoin-credentials
+        key: password
+    internal_ports:
+      8332: 8332
+    mounts:
+      data:
+        config/data: /config
+  plugin:
+    image: registry.nirvati.de/nirvati/n5i-plugin-bitcoin:v0.2.7
+    mounts:
+      data:
+        config/data: /data
+    environment:
+      PW_SEED: {{ derive_entropy(identifier="bitcoin-pw-seed") }}
+      BTC_NETWORK: {{ settings.network }}
+      RUST_LOG: debug
+    plugins:
+      info:
+        display_name: Bitcoin Core Integration
+        type: context
+        port: 50051
+
+tor:
+  onion-service:
+    rpc:
+      target_svc: rpc-proxy
+      ports:
+        8333: 8333
+    p2p:
+      target_svc: bitcoin
+      ports:
+        8332: 8332

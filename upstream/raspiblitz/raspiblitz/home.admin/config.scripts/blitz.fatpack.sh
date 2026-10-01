@@ -1,0 +1,225 @@
+#!/bin/bash
+# setup script - to be called by build_sdcard.sh or on a stopped minimal build sd card image
+
+echo -e "\n*** FATPACK ***"
+
+# check if su
+if [ "$EUID" -ne 0 ]
+  then echo "Please run as root (with sudo)"
+  exit 1
+fi
+
+# determine correct raspberrypi boot drive path (that easy to access when sd card is insert into laptop)
+raspi_bootdir=""
+if [ -d /boot/firmware ]; then
+  raspi_bootdir="/boot/firmware"
+elif [ -d /boot ]; then
+  raspi_bootdir="/boot"
+fi
+echo "# raspi_bootdir(${raspi_bootdir})"
+
+# detect if current root drive is a PiKVM virtual USB drive
+is_pikvm=0
+rootPartitionLine=$(mount | grep " / " | cut -d " " -f 1)
+rootPartition=$(basename ${rootPartitionLine})
+rootDrive=$(basename "$(readlink -f "/sys/class/block/$rootPartition/..")")
+if [ -d "/sys/block/${rootDrive}/device" ]; then
+  vendor=$(cat "/sys/block/${rootDrive}/device/vendor" 2>/dev/null | tr -d ' ' | tr '[:upper:]' '[:lower:]')
+  model=$(cat "/sys/block/${rootDrive}/device/model" 2>/dev/null | tr -d ' ' | tr '[:upper:]' '[:lower:]')
+  if echo "$vendor" | grep -q "pikvm"; then is_pikvm=1; fi
+  if echo "$model" | grep -q "pikvm"; then is_pikvm=1; fi
+  if echo "$model" | grep -q "file-stor"; then is_pikvm=1; fi
+fi
+echo "# rootDrive(${rootDrive}) is_pikvm(${is_pikvm})"
+
+# make sure LCD is on (default for fatpack)
+/home/admin/config.scripts/blitz.display.sh set-display lcd
+
+# check if sd card needs expansion before fatpack
+source <(sudo /home/admin/config.scripts/blitz.bootdrive.sh status)
+if [ ${rootPartitionBytes} -lt 58465668608 ]; then
+
+    echo "################################################"
+    echo "# SD CARD NEEDS EXPANSION BEFORE FATPACK"
+    echo "# AND MAKE SURE TO USE 64GB SD CARD"
+    echo "# this will be done now ... and trigger a reboot"
+    echo "# after reboot run this script again"
+    echo "################################################"
+
+    # write a stop file to prevent full bootstrap
+    # after fsexpand reboot
+    touch ${raspi_bootdir}/stop
+
+    # trigger fsexpand
+    /home/admin/config.scripts/blitz.bootdrive.sh fsexpand
+
+    # make sure this expand is not marked (because its not done after release)
+    sed -i "s/^fsexpanded=.*/fsexpanded=0/g" /home/admin/raspiblitz.info
+
+    echo "################################################"
+    echo "# SD CARD GOT EXPANSION BEFORE FATPACK"
+    if [ "${is_pikvm}" = "1" ]; then
+        echo "# PiKVM virtual USB detected - skipping forced reboot"
+        echo "# continuing fatpack on PiKVM-mounted writable flash media"
+    else
+        echo "# triggering a reboot"
+        echo "# after reboot run this script again"
+    fi
+    echo "################################################"
+
+    if [ "${is_pikvm}" != "1" ]; then
+        # trigger reboot
+        shutdown -h -r now
+        exit 0
+    fi
+fi
+
+apt_install() {
+  # shellcheck disable=SC2068
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y ${@}
+  if [ $? -eq 100 ]; then
+    echo "FAIL! apt failed to install needed packages!"
+    # shellcheck disable=SC2068
+    echo ${@}
+    exit 1
+  fi
+}
+
+echo "# getting default user/repo from build_sdcard.sh"
+sudo cp /home/admin/raspiblitz/build_sdcard.sh /home/admin/build_sdcard.sh
+sudo chmod +x /home/admin/build_sdcard.sh 2>/dev/null
+source <(sudo /home/admin/build_sdcard.sh -EXPORT)
+branch="${githubBranch}"
+echo "# branch(${branch})"
+echo "# defaultAPIuser(${defaultAPIuser})"
+echo "# defaultAPIrepo(${defaultAPIrepo})"
+echo "# defaultWEBUIuser(${defaultWEBUIuser})"
+echo "# defaultWEBUIrepo(${defaultWEBUIrepo})"
+sleep 3
+
+if [ "${defaultAPIuser}" == "" ] || [ "${defaultAPIrepo}" == "" ]; then
+  echo "FAIL: missing defaultAPIuser or defaultAPIrepo"
+  exit 1
+fi
+
+if [ "${defaultWEBUIuser}" == "" ] || [ "${defaultWEBUIrepo}" == "" ]; then
+  echo "FAIL: missing defaultWEBUIuser or defaultWEBUIrepo"
+  exit 1
+fi
+
+echo "* Adding nodeJS Framework ..."
+/home/admin/config.scripts/bonus.nodejs.sh on || exit 1
+
+echo "* Optional Packages (may be needed for extended features)"
+apt_install qrencode secure-delete fbi msmtp unclutter xterm python3-pyqt5 xfonts-terminus python3-jinja2 socat libatlas-base-dev hexyl
+
+echo "#############################################################"
+echo "* Adding LND ..."
+/home/admin/config.scripts/lnd.install.sh install || exit 1
+
+echo "#############################################################"
+echo "* Adding Core Lightning ..."
+/home/admin/config.scripts/cl.install.sh install || exit 1
+
+# *** AUTO UPDATE FALLBACK NODE LIST FROM INTERNET (only in fatpack)
+echo "*** FALLBACK NODE LIST ***"
+# see https://github.com/rootzoll/raspiblitz/issues/1888
+sudo -u admin curl -H "Accept: application/json; indent=4" https://bitnodes.io/api/v1/snapshots/latest/ -o /home/admin/fallback.bitnodes.nodes
+# Fallback Nodes List from Bitcoin Core
+sudo -u admin curl https://raw.githubusercontent.com/bitcoin/bitcoin/master/contrib/seeds/nodes_main.txt -o /home/admin/fallback.bitcoin.nodes
+
+echo "#############################################################"
+echo "* Adding Raspiblitz API ..."
+sudo /home/admin/config.scripts/blitz.web.api.sh on "${defaultAPIuser}" "${defaultAPIrepo}" "blitz-${branch}" || exit 1
+
+echo "#############################################################"
+echo "* Adding Raspiblitz WebUI ..."
+sudo /home/admin/config.scripts/blitz.web.ui.sh on "${defaultWEBUIuser}" "${defaultWEBUIrepo}" "release/${branch}" || exit 1
+
+# set build code as new www default
+sudo rm -r /home/admin/assets/nginx/www_public
+mkdir -p /home/admin/assets/nginx/www_public
+sudo cp -a /home/blitzapi/blitz_web/build/* /home/admin/assets/nginx/www_public
+sudo chown admin:admin /home/admin/assets/nginx/www_public
+sudo rm -r /home/blitzapi/blitz_web/build/*
+
+echo "#############################################################"
+echo "* Adding Code&Compile for WEBUI-APP: ALBYHUB"
+/home/admin/config.scripts/bonus.albyhub.sh install || exit 1
+source <(/home/admin/config.scripts/bonus.albyhub.sh status)
+if [ "${fatpack}" != "1" ]; then
+  echo "FATPACK FAIL: albyhub"
+  exit 1
+fi
+
+echo "#############################################################"
+echo "* Adding Code&Compile for WEBUI-APP: LNBITS"
+/home/admin/config.scripts/bonus.lnbits.sh install || exit 1
+source <(/home/admin/config.scripts/bonus.lnbits.sh status)
+if [ "${fatpack}" != "1" ]; then
+  echo "FATPACK FAIL: lnbits"
+  exit 1
+fi
+
+echo "#############################################################"
+echo "* Adding Code&Compile for WEBUI-APP: JAM"
+/home/admin/config.scripts/bonus.jam.sh install || exit 1
+source <(/home/admin/config.scripts/bonus.jam.sh status)
+if [ "${fatpack}" != "1" ]; then
+  echo "FATPACK FAIL: jam"
+  exit 1
+fi
+
+echo "#############################################################"
+echo "* Adding Code&Compile for WEBUI-APP: BTCPAYSERVER"
+/home/admin/config.scripts/bonus.btcpayserver.sh install || exit 1
+source <(/home/admin/config.scripts/bonus.btcpayserver.sh status)
+if [ "${fatpack}" != "1" ]; then
+  echo "FATPACK FAIL: btcpayserver"
+  exit 1
+fi
+
+echo "#############################################################"
+echo "* Adding Code&Compile for WEBUI-APP: RTL"
+/home/admin/config.scripts/bonus.rtl.sh install || exit 1
+source <(/home/admin/config.scripts/bonus.rtl.sh status)
+if [ "${fatpack}" != "1" ]; then
+  echo "FATPACK FAIL: rtl"
+  exit 1
+fi
+
+echo "#############################################################"
+echo "* Adding Code&Compile for WEBUI-APP: THUNDERHUB"
+/home/admin/config.scripts/bonus.thunderhub.sh install || exit 1
+source <(/home/admin/config.scripts/bonus.thunderhub.sh status)
+if [ "${fatpack}" != "1" ]; then
+  echo "FATPACK FAIL: thunderhub"
+  exit 1
+fi
+
+echo "#############################################################"
+echo "* Adding Code&Compile for WEBUI-APP: BTC RPC EXPLORER"
+/home/admin/config.scripts/bonus.btc-rpc-explorer.sh install || exit 1
+source <(sudo /home/admin/config.scripts/bonus.btc-rpc-explorer.sh status)
+if [ "${fatpack}" != "1" ]; then
+  echo "FATPACK FAIL: btc-rpc-explorer"
+  exit 1
+fi
+
+echo "#############################################################"
+echo "* Adding Code&Compile for WEBUI-APP: MEMPOOL"
+/home/admin/config.scripts/bonus.mempool.sh install || exit 1
+source <(/home/admin/config.scripts/bonus.mempool.sh status)
+if [ "${fatpack}" != "1" ]; then
+  echo "FATPACK FAIL: mempool"
+  exit 1
+fi
+
+echo "#############################################################"
+echo "* Adding Code&Compile for WEBUI-APP: ELECTRS"
+/home/admin/config.scripts/bonus.electrs.sh install || exit 1
+source <(/home/admin/config.scripts/bonus.electrs.sh status)
+if [ "${fatpack}" != "1" ]; then
+  echo "FATPACK FAIL: electrs"
+  exit 1
+fi

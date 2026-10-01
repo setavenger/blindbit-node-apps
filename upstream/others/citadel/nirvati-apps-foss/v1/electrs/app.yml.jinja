@@ -1,0 +1,13 @@
+version: 1
+
+containers:
+  electrum:
+    image: registry.nirvati.de/apps/electrs:v0.10.10
+    working_dir: /data
+    mounts:
+      data:
+        electrs: /data
+    internal_ports:
+      50001: 50001
+    public_ports:
+      50001: 50001

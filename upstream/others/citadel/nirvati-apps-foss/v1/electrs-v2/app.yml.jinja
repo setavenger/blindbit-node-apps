@@ -1,0 +1,15 @@
+version: 1
+
+containers:
+  electrum:
+    image: registry.nirvati.de/apps/electrs:v0.10.10
+    type: StatefulSet
+    working_dir: /data
+    fs_group: 1000
+    mounts:
+      data:
+        electrs: /data
+    internal_ports:
+      50001: 50001
+    public_ports:
+      50001: 50001

@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>bitcoind</Name>
+  <Repository>ghcr.io/anym001/docker-bitcoind:latest</Repository>
+  <Registry>https://ghcr.io/anym001/docker-bitcoind</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://forums.unraid.net/topic/195410-support-anym001-application-dockers/</Support>
+  <Project>https://github.com/bitcoin/bitcoin</Project>
+  <Overview>Run your own Bitcoin node and contribute to the decentralization of the Bitcoin network!&#13;
+This template deploys a full bitcoind instance based on Bitcoin Core. (https://bitcoin.org)&#13;
+&#13;
+To allow other nodes to connect to your instance, make sure port 8333 on your router is forwarded to the container&#x2019;s P2P port configured below.&#13;
+&#13;
+For full customization, create a bitcoin.conf file inside the data directory. You can reference Bitcoin Core&#x2019;s example configuration for available options and advanced settings.&#13;
+Example: https://github.com/bitcoin/bitcoin/blob/master/share/examples/bitcoin.conf</Overview>
+  <Category/>
+  <WebUI/>
+  <TemplateURL/>
+  <Icon>https://raw.githubusercontent.com/anym001/unraid-docker-templates/main/anym001/images/bitcoin.png</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled>1764309789</DateInstalled>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+  <Config Name="Data Dir" Target="/home/bitcoin/.bitcoin" Default="" Mode="rw" Description="" Type="Path" Display="always" Required="false" Mask="false">/mnt/user/bitcoin/bitcoind</Config>
+  <Config Name="Host Port 1" Target="8332" Default="" Mode="tcp" Description="" Type="Port" Display="always" Required="false" Mask="false">8332</Config>
+  <Config Name="Host Port 2" Target="8333" Default="" Mode="tcp" Description="" Type="Port" Display="always" Required="false" Mask="false">8333</Config>
+  <Config Name="PUID" Target="PUID" Default="" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
+  <Config Name="UMASK" Target="UMASK" Default="" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">002</Config>
+  <Config Name="DATA_PERM" Target="DATA_PERM" Default="2770" Mode="" Description="Permissions applied to the data directory." Type="Variable" Display="advanced" Required="false" Mask="false">2770</Config>
+  <TailscaleStateDir/>
+</Container>

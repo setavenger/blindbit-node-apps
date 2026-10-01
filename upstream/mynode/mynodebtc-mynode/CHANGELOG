@@ -1,0 +1,1434 @@
+=== v0.3.49 ===
+- Released 09/25/26
+- Upgrade LNbits to v1.6.1
+- Issue HTTPS certificates from a local CA
+- Suggest HTTPS from home page
+- Add option to disable Tor remote access
+- Improve Tor and VPN page layout
+- Manage LNbits and BTCPay Server admin logins
+- Add BTCPay password recovery button
+- Update Bitcoin seed peers
+- Migrate app SDK into the MyNode repo
+- Bug Fixes
+
+=== v0.3.48-2 ===
+- Released 09/18/26
+- Rework per-app credentials
+- Minor CSS improvements
+- Remove manual tarball upload for app installation
+- Bug Fixes
+
+=== v0.3.48 ===
+- Released 09/15/26
+- Upgrade to NodeJS 24
+- Upgrade Thunderhub to v0.19.0
+- Upgrade Balance of Satoshis to 23.1.12
+- Upgrade Sphinx Relay to v2.5.3
+- Upgrade WeTTY to v3.2.1
+- Upgrade RTL to v0.15.12
+- Upgrade Public Pool
+- Upgrade Astral to v0.0.24
+- Add per-app credentials
+- Improve Change Password UI
+- Remove QuickSync entirely
+- Verify downloads and Docker images against pinned hashes
+- Warn and skip app upgrades on unsupported Debian versions
+- Bug Fixes
+
+=== v0.3.47 ===
+- Released 09/12/26
+- Upgrade LND to v0.21.3
+- Upgrade Mempool to v3.3.1
+- Upgrade Thunderhub to v0.14.6
+- Upgrade Lightning Terminal to v0.17.4
+- Upgrade BTCPay to 2.4.4
+- Upgrade BTC RPC Explorer to v3.5.1
+- Upgrade AlbyHub to 1.24.0
+- Upgrade Joininbox to v0.9.0
+- Upgrade Jam to v0.4.1
+- Upgrade Loop to v0.35.0
+- Bug Fixes
+
+=== v0.3.46 ===
+- Released 08/07/26
+- Upgrade BTCPay to v2.4.2
+- Upgrade Specter to v2.1.10
+- Add Custom Bitcoin Version for Core 29.x
+- Add explicit datacarrier=83 size config to default bitcoin.conf
+- Improve log consistency by preventing /var/log from filling up
+- Bug Fixes
+
+=== v0.3.45 ===
+- Released 07/11/26
+- Upgrade BTCPay Server to v1.13.6
+- Upgrade Canary to v1.5.2
+- Upgrade Tor to at least 0.4.9.x to keep Tor working past Sept.
+- Add warning if using old Tor version (0.4.8.x)
+- Fix issue with BTCPay Server not seeing blocks
+- Fix issue issue with some apps starting too early
+- Fix issue with old repos on Debian 10 systems
+
+=== v0.3.44 ===
+- Released 05/25/26
+- Add Canary wallet monitor application
+- Upgrade Knots to 29.3.3
+- Add autoupdate choices for Knots and Knots+Bip110
+- Add help text to BIP toggles
+- Add warning to homepage for old Operating Systems
+- Minor bug fixes
+
+=== v0.3.43 ===
+- Released 03/24/26
+- Upgrade Bitcoin to v29.3
+- Upgrade LND to v0.20.1
+- Upgrade LNDg to v1.10.1
+- Update Knots + BIP 110 Custom Version to v0.4.1
+
+=== v0.3.42 ===
+- Released 03/08/26
+- Fix bug with JoinMarket v0.9.11 installation
+- Fix config issue causing slow Electrs sync with Knots
+- Update Knots + BIP 110 Custom Version to v0.3
+- Improve Marketplace button color in dark mode
+
+=== v0.3.41 ===
+- Released 02/06/26
+- Add Public Pool UI Application
+- Add Public Pool Application (stratum server backend)
+- Add Bitcoin Knots + BIP110 Custom Bitcoin Version
+- Upgrade DATUM to v0.4.1
+- Upgrade AlbyHub to v1.20.0
+
+=== v0.3.40 ===
+- Released 10/17/25
+- Revert Bitcoin config causing port 8333 issues
+
+=== v0.3.39 ===
+- Released 10/15/25
+- Upgrade Bitcoin v29.1
+- Add Bitcoin Knots v29.2
+- Upgrade LNBits to v1.2.1
+
+=== v0.3.38 ===
+- Released 09/06/25
+- Add AlbyHub v0.19.3
+- Add Bitcoin Knots v29.1
+- Upgrade LND to v0.19.3
+- Upgrade Datum to v0.4.0
+- Upgrade Joininbox to v0.8.4
+- Upgrade Jam to v0.4.0
+- Update default JoinMarket servers to improve connections
+- Fix issue with viewing JoinMarket order book
+- Various bug fixes
+
+=== v0.3.37 ===
+- Released 07/11/25
+- Upgrade LND to v0.19.1
+- Upgrade Thunderhub to v0.13.32
+- Upgrade Specter to v2.1.1
+- Upgrade Loop to v0.31.1
+- Better handling of some 64-bit platforms
+- Fixes Specter with Bitcoin v0.28+
+- Various bug fixes
+
+=== v0.3.36 ===
+- Released 05/09/25
+- Upgrade Bitcoin to v0.28.1
+- Upgrade LND to v0.18.5
+- Upgrade Mempool to v3.2.1
+- Upgrade LNbits to v0.12.12
+- Add support for Raspberry Pi 5 Compute Module
+- Enable Admin UI for LNbits
+- Upgrade Rust to v1.86.0
+- Improve support for NVMe USB Adapters
+- Fix for Glances v4.0
+- Various bug fixes
+
+=== v0.3.35 ===
+- Released 03/29/25
+- Add Datum Gateway v0.3.1
+- Add Bitcoin Knots v28.1
+- Upgrade Tailscale to v1.78.1
+- Change references from SD Card to OS Drive
+- Fix possible issue with Mempool file permissions
+- Minor speed improvements
+- Minor bug fixes
+
+=== v0.3.34 ===
+- Released 02/27/25
+- Fix issue launching Mempool
+- Fix upgrade issue on Buster
+- Fix display of bitcoin peer ping time to correct value
+- Fix issue with Price Ticker price not being found
+
+=== v0.3.33 ===
+- Released 02/17/25
+- Resolve python exception issue
+
+=== v0.3.32 ===
+- Released 12/30/24
+- Add NVMe support to Clone Tool
+- Disable UAS on Raspbery Pi 5 devices
+- Resolve issue launching JAM
+- Resolve issue installing LNDg
+
+=== v0.3.31 ===
+- Released 10/05/24
+- Upgrade LND to v0.18.3
+- Upgrade LiT to v0.13.3
+- Upgrade Loop to v0.28.7
+- Upgrade Mempool to v3.0.0
+- Upgrade Thunderhub to v0.13.31
+- Add Bitcoin Knots 27.1
+
+=== v0.3.30 ===
+- Released 07/04/24
+- Upgrade Bitcoin to v27.1
+- Upgrade LND to v0.18.1
+- Upgrade Loop to v0.28.5
+- Upgrade Lightning Terminal to v0.13.1
+- Add option to enable/disable IPv6
+- Device info efficiency improvements
+- Bug fixes
+
+=== v0.3.29 ===
+- Released 05/23/24
+- Add Bitcoin Knots v26.1
+- Upgrade LNDg to v1.8.0
+- Fix JAM container issue
+- Enable IPv6 system networking
+
+=== v0.3.28 ===
+- Released 04/27/24
+- Upgrade Bitcoin to v26.1
+- Upgrade LND to v0.17.4
+- Upgrade LNBits to v0.12.5
+- Upgrade Loop to v0.28.1
+- Resolve issue with debian backports updates
+- Remove Dojo and Whirlpool from Marketplace
+
+=== v0.3.27 ===
+- Released 03/03/24
+- Upgrade LNBits to v0.12.2
+- Add option to disable I2P
+- Improve internal networking issues with IPv6
+- Fix possible BTC RPC Explorer connection issue
+- Fix issue with RTL connecting to Loop
+
+=== v0.3.26 ===
+- Released 01/21/24
+- Upgrade Thunderhub to v0.13.30
+- Upgrade RTL to v0.15.0
+- Upgrade LiT to v0.12.2
+- Upgrade LND to v0.17.3
+- Resolve Mempool launch issue
+
+=== v0.3.25 ===
+- Released 1/11/24
+- Initial Raspberry Pi 5 Support
+- Add log2ram on x86 devices
+- Fix issue where JM certificates aren not gnerated
+- Fix issue creating legacy wallet for JoinMarket
+- Fix issue where some API requests would return cached data
+
+=== v0.3.24 ===
+- Released: 12/18/23
+- Upgrade Bitcoin to v26.0
+- Upgrade Lightning Terminal to v0.12.1
+- Upgrade Loop to v0.26.6
+- Upgrade LND to v0.17.2
+- Improved support for Debian 12
+- Added setting for Electrum TX Limit
+- Dynamic setting for assumevalid during initial sync
+- Minor UI Improvements
+
+=== v0.3.23 ===
+- Released: 11/05/23
+- Fix issue determining LND status
+
+=== v0.3.22 ===
+- Released: 11/02/23
+- Upgrade Bitcoin to v25.1
+- Upgrade LND to v0.17.0
+- Upgrade LiT to v0.12.0
+- Upgrade Loop to v0.26.5
+- Upgrade LNBits to v0.11.1
+- Upgrade RTL to v0.14.1
+- Upgrade Joininbox to v0.8.1
+- Upgrade JAM to v0.1.6
+- Minor Fixes
+
+=== v0.3.21 ===
+- Released: 09/29/23
+- Resolve upgrade issue with old NodeJS package server
+- Upgrade LNBits to v0.10.0
+
+=== v0.3.20 ===
+- Released: 09/12/23
+- Upgrade Thunderhub to v0.13.23
+- Upgrade BTC RPC Explorer to v3.4.0
+- Upgrade Dojo to v1.20.0
+- Upgrade LNBits to v0.10.9
+- Upgrade Lightning Terminal to v0.10.4
+- Upgrade Loop to v0.26.2
+- Upgrade BTCPay Server to v1.11.2
+- Upgrade Joininbox to v0.8.0
+- Upgrade Caravan to v0.6.2
+- Upgrade NodeJS to v18.x
+- Update Favicon
+- Update Joinmarket and Caravan icons
+- Add Channel Tools for debugging
+- Add pin for homepage Bitcoin details
+- Various bug fixes
+
+=== v0.3.19 ===
+- Released: 07/14/23
+- Upgrade LND to v0.16.4
+- Upgrade Loop to v0.25.2
+- Upgrade LNDg to v1.7.1
+- Upgrade BTCPay to v1.10.3
+
+=== v0.3.18 ===
+- Released: 06/12/23
+- Upgrade Bitcoin to v25.0
+- Upgrade LND to v0.16.3
+- Upgrade RTL to v0.14.0
+- Upgrade LiT to v0.10.1
+- Upgrade Loop to v0.24.1
+- Upgrade Pool to v0.6.4
+- Add button to reset LND macaroons
+- Add button to reset thunderhub config
+- Add settings file to control electrs index_limit
+- Enable mempoolfullrbf in default Bitcoin config
+- Bugfix: Resolve Flask deprecation issue
+
+=== v0.3.17 ===
+- Released: 05/15/23
+- Upgrade Lightning Terminal to v0.9.2
+- Upgrade LNDg to v1.6.4
+- Upgrade LNBits to v0.10.6
+
+=== v0.3.16 ===
+- Released: 04/30/23
+- Upgrade LND to v0.16.2
+- Upgrade LiT to v0.9.1
+- Upgrade Loop to v0.23.0
+- Update JoinMarket Config
+
+=== v0.3.15 ===
+- Released: 04/17/23
+- Upgrade Dojo to v1.19.2
+- Upgrade BTCPay Server to v1.8.4
+- Upgrade LNDg to v1.6.3
+- Upgrade Nostr RS Relay to v0.8.8
+- Fix upgrade issue on VM images
+
+=== v0.3.14 ===
+- Released: 04/05/23
+- Fix: Update config so Lightning Terminal launches properly
+
+=== v0.3.13 ===
+- Released: 04/04/23
+- Upgrade LNBits to v0.10.0
+- Upgrade Mempool to v2.5.0
+- Upgrade Loop to v0.22.0
+- Upgrade Pool to v0.6.2
+- Upgrade Lightning Terminal to v0.9.0
+- Upgrade LNDg to v1.6.0
+- Upgrade BoS to v13.31.5
+- Upgrade LNDManage to v0.14.2
+- Hide Premium+ Access Token
+- Improve logging
+
+=== v0.3.12 ===
+- Released: 03/06/23
+- Fix apparmor profile issue preventing tor from starting on some platforms
+
+=== v0.3.11 ===
+- Released: 03/01/23
+- Improve hybrid-mode LND config
+- Increase electrs address limits
+- Add option to reset custom Bitcoin version
+- Add CLI command to stop dynamic apps
+- Improved mempool re-install
+- Add pass and apparmor packages to help docker issues
+
+=== v0.3.10 ===
+- Released: 02/16/23
+- Add ability to swap versions of Bitcoin
+- Add ability to run Bitcoin Ordisrespector
+- Upgrade lnbits to v0.9.7
+- Upgrade Astral (nostr client)
+- Upgrade JAM to v0.1.5
+- Upgrade LNDg to v1.5.1
+- Upgrade JoininBox to v0.7.6
+- Upgrade BTCPay Server to v1.7.11
+- Upgrade Nostr RS Relay to v0.8.5
+- Add VPN log to status page
+- Improve LN Wallet delete / remake process
+
+=== v0.3.09 ===
+- Released: 01/19/23
+- Add LndBoss v2.16.0
+- Add ability to append custom Bitcoin config
+- Add ability to append custom LND config
+- Upgrade Loop to v0.21.0
+- Upgrade LNDg to v1.5.0
+- Upgrade Astral
+- Improve NVMe support
+- Fix electrs binary on rockpi 4
+- Fix Thunderhub config from being overwritten
+- Fix electrum from hanging on large addresses
+- Add better nostr app descriptions
+- Add status log for Joinmarket API
+
+=== v0.3.08 ===
+- Released: 01/04/23
+- Add Astral nostr client
+- Add nostr-rs-relay v0.7.15
+- Add noscl nostr client v0.6.0
+- Upgrade LNBits to v0.9.5.3
+- Upgrade RTL to v0.13.4
+- Improve default joinmarket settings
+- Add Go Compiler
+- Fix CKBunker installation errors
+- Add Marketplace category for Communication
+- Improve Clearnet toggle for LND
+
+=== v0.3.07 ===
+- Released: 12/22/22
+- Apply workaround for Bitcoin wallet migration issue
+- Improve port binding logic for Bitcoin when clearnet is enabled
+- Upgrade LNBits to v0.9.5.2
+
+=== v0.3.06 ===
+- Released: 12/18/22
+- Upgrade Bitcoin to v24.0.1
+- Upgrade LND to v0.15.5
+- Upgrade RTL to v0.13.2
+- Upgrade Thunderhub to v0.13.18
+- Upgrade BTC Pay to v1.7.2
+- Upgrade LNDg to v1.4.0
+- Upgrade Lily Wallet to v1.3.0
+- Upgrade Caravan to v0.3.14
+- Upgrade Jam to v0.1.4
+- Upgrade Specter to v1.14.1
+- Upgrade Pool vo v0.6.1
+- Upgrade Lit to v0.8.5
+- Upgrade BoS to v13.10.6
+- Enable NTP on Armbian platforms
+- Minor Bug Fixes
+
+=== v0.3.05 ===
+- Released: 11/11/22
+- Add Lilywallet
+- Upgrade electrs for aarch64 and arm32
+- Upgrade Loop to v0.20.2
+- Upgrade Pool to v0.6.0
+- Upgrade BTCPay to v1.6.12
+- Upgrade Jam to v0.1.3
+- Upgrade BoS to v13.5.1
+- Upgrade Sphinx Relay to v2.2.12
+- Upgrade Whirlpool to v0.10.16
+- Minor Bug Fixes
+
+=== v0.3.04 ===
+- Released: 11/01/22
+- Add Jam (v0.1.1)
+- Upgrade LND to v0.15.4
+- Upgrade LiT to v0.8.3
+- Upgrade Electrs to v0.9.9
+- Upgrade BoS to v13.1.4
+- Fix Warden Terminal installation issue
+- Improve LNBits connection consistency to LND
+
+=== v0.3.03 ===
+- Released: 10/09/22
+- Upgrade LND to v0.15.2
+- Resolves issue syncing LND to blockchain tip
+
+=== v0.3.02 ===
+- Released: 10/08/22
+- Add I2P Netowork Option
+- Upgrade LNBits to v0.9.4
+- Upgrade Specter to v1.13.0
+- Upgrade BTCPay Server to v1.6.11
+- Upgrade Thunderhub to v0.13.16
+- Upgrade Lightning Terminal to v0.8.0
+- Upgrade Pool to v0.5.8
+- Upgrade BoS to v13.0.2
+- Upgrade JoininBox to v0.7.3
+- Add network selection during setup
+- Minor bug fixes
+
+=== v0.3.01 ===
+- Released: 09/14/22
+- Add Tailscale VPN App
+- Add WeTTY Terminal App
+- Upgrade LND to v0.15.1
+- Upgrade LiT to v0.7.1
+- Upgrade BoS to 12.29.0
+- Upgrade JoininBox to v0.7.2
+- Upgrade RTL to v0.13.1
+- Upgrade BTCPay to v1.6.10
+- Upgrade Thunderhub to v0.13.15
+- Upgrade Specter to v1.12.0
+- Upgrade LNDg to v1.3.1
+- Adding community apps is a community edition feature
+- Minor bug fixes
+
+=== v0.3.0 ===
+- Released: 08/19/22
+- New App Marketplace
+- New Premium+ Service
+- New Software Development Kit (SDK)
+- Upgrade LND to v0.15.0
+- Upgrade BTCPay Server to v1.6.9
+- Upgrade LiT to v0.7.0
+- Upgrade Pool to v0.5.7
+- Upgrade Loop to v0.20.1
+- Web Interface Updates
+
+=== v0.2.57 ===
+- Released: 06/18/22
+- New logo!
+- New Customize App Version Interface
+- Upgrade Mempool to v2.4.0
+- Upgrade Specter to v1.10.2
+- Upgrade LNDg to v1.1.2
+- Upgrade BoS to v12.13.2
+- Upgrade PyBlock to v2.0.3
+- Improve Balance Randomization
+- Improve USB driver management
+- Fix Watchtower pubkey display
+- Fix LiT icon path
+- Add reset button for Watchtower client and server
+- Add setting for 
+- Add setting to allow all local network traffic (fixes NAT-PMP)
+
+=== v0.2.56 ===
+- Released: 06/01/22
+- Upgrade Bitcoin v23.0
+- Upgrade BTCPay to v1.5.4
+- Upgrade Thunderhub to v0.13.13
+- Upgrade Specter to v1.10.0
+- Upgrade Dojo to v1.15.0
+- Upgrade Whirlpool CLI to v0.10.15
+- Upgrade LNDg to v1.1.1
+- Upgrade SphinxRelay to v2.2.9
+- Upgrade JoininBox to v0.6.8
+- Upgrade BoS to 12.8.4
+- Improve add more details and warning when drive space is low
+- Add message encouraging RP4 32-bit users to upgrade to 64-bit
+- Dev: Better UEFI support
+- Dev: Improve SDK-based apps
+
+=== v0.2.55 ===
+- Released: 05/06/22
+- Add LNDg (beta)
+- Upgrade LND to v0.14.3
+- Upgrade Specter to v1.9.4
+- Upgrade BTC Pay to v1.5.1
+- Upgrade RTL to v0.12.3
+- Upgrade Thunderhub to v0.13.11
+- Upgrade Sphinx Relay to v2.2.8
+- Upgrade BoS to v12.7.0
+- Upgrade LiT to v0.6.7
+- Upgrade Pool to v0.5.6
+- Refactor BTC Pay Server Install
+- Add option to regenerate SSH keys
+- Add warning for subnet conflicts
+- Basic dynamic app support
+
+=== v0.2.54 ===
+- Released: 04/04/22
+- Add UI for LND Watchtower
+- Upgrade Loop to v0.18.0
+- Upgrade Lightning Terminal to v0.6.5
+- Upgrade Thunderhub to v0.13.10
+- Upgrade Specter to v1.9.1
+- Upgrade BTCPay Server to v1.4.9
+- Upgrade LNDManage to v0.14.1
+- Upgrade Sphinx Relay to v2.2.6
+- Upgrade BoS to v11.64.1
+- Update favicon
+- Resolve issue with RTL install
+- Resolve issue setting LND alias
+- Resolve issue toggling tor
+- Dev: More python refactoring
+
+=== v0.2.53 ===
+- Released: 03/07/22
+- Upgrade Dojo to v1.14.0
+- Upgrade Thunderhub to v0.13.7
+- Upgrade RTL to v0.12.2
+- Upgrade JoininBox to v0.6.7
+- Upgrade BTCPay Server to v1.4.7
+- Upgrade LiT to v0.6.4
+- Upgrade Pool to v0.5.5
+- Upgrade Netdata to v1.32.1
+- Upgrade BoS to v11.57.0
+- Devs: Migrate Web UI to Python3
+- Devs: Refactor Python Code to "PyNode"
+
+=== v0.2.52 ===
+- Released: 02/11/22
+- Upgrade LND to v0.14.2
+- Upgrade Loop to v0.17.0
+- Upgrade BTCPay Server to v1.4.4
+- Upgrade Specter to v1.8.1
+- Upgrade Whirlpool to v0.10.13
+- Upgrade BoS to v11.52.1
+- Improve QR code scanning
+- Add toggle for BIP37 and BIP157
+- Add UAS toggle for USB driver (RP4)
+- Fix: Prevent RPC password errors after resetting blockchain
+- Fix: Corsproxy now runs properly
+- Devs: Add toggle for Python3 web UI
+
+=== v0.2.51 ===
+- Released: 01/28/22
+- Upgrade Mempool to v2.3.1
+- Upgrade BTCPay Server to v1.4.0
+- Upgrade Whirlpool to v0.10.12
+- Upgrade JoininBox to v0.6.6
+- Upgrade Lightning Terminal to v0.6.2
+- Upgrade Pool to v0.5.4
+- Upgrade Sphinx Relay to v2.2.5
+- Upgrade BoS to v11.36.2
+- Add early support for Rock Pi 4
+- Bug fixes
+
+=== v0.2.50 ===
+- Released: 01/02/22
+- Add OpenDime Support
+- Upgrade Dojo to v1.13.0
+- Upgrade RTL to v0.12.0
+- Upgrade JoininBox to v0.6.5
+- Upgrade BTC Pay Server to v1.3.7
+- Upgrade PyBlock to v1.1.9
+
+=== v0.2.49 ===
+- Released: 12/18/21
+- Add Warden Terminal App
+- Upgrade Pool to v0.5.3
+- Upgrade Loop to v0.16.0
+- Upgrade BTC RPC Explorer to v3.3.0
+- Upgrade Caravan to v0.3.13
+- Upgrade PyBlock to v1.1.8.6
+- Upgrade BoS to v11.16.0
+- Enable bash-completion for Bitcoin and LND CLI
+- Fix issue with LND wallet creation on ARM32 platform
+
+=== v0.2.48 ===
+- Released: 12/03/21
+- Add optional Price Ticker
+- Add ability to insert custom hook scripts
+- Upgrade LiT to v0.6.2
+- Upgrade Specter to v1.7.2
+- Upgrade JoininBox to v0.6.4
+- Upgrade BoS to v0.11.13
+- Upgrade PyBlock to v1.1.6
+- Improve Docker Consistency
+
+=== v0.2.47 ===
+- Released: 11/26/21
+- Upgrade LND to v0.14.1
+- Upgrade Electrs to v0.9.3
+- Upgrade Lightning Terminal to v0.6.0
+- Upgrade LNDManage to v0.14.0
+- Upgrade BTC Pay Server to v1.3.6
+- Upgrade PyBlock to v1.1
+- Upgrade Sphinx Relay to v2.2.3
+- Upgrade Python to v3.8.9
+- Fix LND wallet creation issue
+
+=== v0.2.46 ===
+- Released: 11/19/21
+- Upgrade LND to v0.14.0
+- Upgrade Dojo to v1.12.1
+- Upgrade Specter to v1.7.1
+- Upgrade BTC Pay Server to v1.3.5
+- Upgrade BoS to v11.12.0
+- Upgrade Sphinx Relay to v2.2.2
+- Improve Tor services for apps
+- Add app tile for lndmanage
+- Improve handling of 32->64 bit upgrades
+- Bug fixes
+
+=== v0.2.45 ===
+- Released: 11/03/21
+- Remove Tor v2 services
+- Improve upgrade consistency
+- Add button to download HTTPS certificate
+
+=== v0.2.44 ===
+- Released: 10/26/21
+- Upgrade Electrs to v0.9.1
+- Upgrade Thunderhub to v0.12.30
+- Upgrade Dojo to v1.12.0
+- Upgrade Specter to v1.7.0
+- Upgrade BTC Pay Server to v1.2.4
+- Upgrade JoininBox to v0.6.2
+- Upgrade LiT to v0.5.2
+- Upgrade NodeJS to v14+
+- Add app tile for BoS
+- Add buttons to copy passwords
+- Add disk benchmark tool
+- Add ability to show and clear all upgrade logs
+- Bug Fixes and Improvements
+
+=== v0.2.43 ===
+- Released: 10/04/21
+- Upgrade Bitcoin to v22.0
+- Upgrade LND to v0.13.3
+- Upgrade Electrs to v0.9.0
+- Upgrade Lightning Terminal to v0.5.1
+- Upgrade LNDHub to v1.4.1
+- Upgrade Sphinx Relay to v2.2.1
+- Upgrade PyBlock to v0.9.8.9
+- Upgrade BoS to v11.2.0
+- Updated default Bitcoin config
+- Bug fixes
+
+=== v0.2.42 ===
+- Released: 09/15/21
+- Upgrade Mempool to v2.2.2
+- Upgrade RTL to v0.11.2
+- Upgrade Specter to v1.6.0
+- Upgrade BTC Pay to v1.2.3
+- Upgrade Caravan to v0.3.11
+- Upgrade BoS to v10.14.3
+- Enable LND database compaction
+- Logging improvements and quote additions
+
+=== v0.2.41 ===
+- Released: 08/22/21
+- Upgrade BTC RPC Explorer to v3.2.0
+- Upgrade JoinInBox to version v0.6.0
+- Upgrde BoS to v10.8.0
+- Add QR codes for pairing Zap
+- Resolve Thunderhub "Internal Server Error" Issue
+
+=== v0.2.40 ===
+- Released: 08/16/21
+- Upgrade Dojo to v1.10.1
+- Resolve Pool upgrade issue
+
+=== v0.2.39 ===
+- Released: 08/15/21
+- Upgrade LND to v0.13.1
+- Upgrade Loop to v0.15.0
+- Upgrade Pool to v0.5.1
+- Upgrade Specter to v1.5.1
+- Upgrade Mempool to v2.2.1
+- Upgrade BTCPay Server to v1.2.0
+- Upgrade Caravan to v0.3.10
+- Upgrade LNDManage to v0.13.0
+- Upgrade BoS to v10.7.4
+- Upgrade Whirlpool to v0.10.11
+
+=== v0.2.38 ===
+- Released: 07/16/21
+- Upgrade Specter to v1.4.6
+- Upgrade Balance of Satoshis to v10.6.0
+- Upgrade Mempool to v2.2.0
+- Upgrade PyBlock to v0.9.8.8
+- Improve Clone Tool Speed and Consistency
+- Add clear cache option for Mempool
+- UI Improvements
+- Fix Dojo issue on Raspi4 64-bit
+- Fix issue with force HTTPS
+- Bug Fixes
+
+=== v0.2.37 ===
+- Released: 06/27/21
+- Resolve wallet creation / restore issue
+
+=== v0.2.36 ===
+- Released: 06/23/21
+- Fix path to Lightning Terminal sig file
+
+=== v0.2.35 ===
+- Released: 06/23/21
+- Add ability to customize app versions
+- Upgrade LND to v0.13.0
+- Upgrade Loop to v0.14.1
+- Upgrade LiT to v0.5.0
+- Upgrade BoS to v10.2.0
+- Upgrade LNDHub to v1.3.5
+- Upgrade RTL to v0.11.0
+- Upgrade JoinInBox to v0.5.0
+- Upgrade PyBlock to v0.9.8.6
+- Add ability to reset Specter config
+- Migrate LND unlock to file-based method
+- Upgrade LNBits
+- Display 32/64 bit device info on RP4 devices
+- Bug fixes
+
+=== v0.2.34 ===
+- Released: 06/06/21
+- Add pyblock v0.9.8
+- Upgrade Specter to v1.4.2
+- Upgrade Dojo to v1.10.0
+- Upgrade Sphinx Relay to v2.1.3
+- Upgrade Caravan to v0.3.8
+- Upgrade Loop to v0.14.0
+- Upgrade Pool to v0.5.0
+- Upgrade BoS to v9.2.0
+- Upgrade lndmanage to v0.12.0
+- Improve LNDHub config
+- Minor UI updates
+
+=== v0.2.33 ===
+- Released: 05/18/21
+- Add Balance of Satoshis v8.0.14
+- Upgrade Sphinx Relay to v2.0.14
+- Upgrade Thunderhub to v0.12.17
+- Upgrade JoininBox to v0.4.0
+- Upgrade LNDHub to v1.3.4
+- Bug fix: Fix startup error due to missing file
+- Bug fix: Resolve missing Dojo app icon
+- Bug fix: Fix Dark Mode CSS coloring
+
+=== v0.2.32 ===
+- Released: 05/13/21
+- Upgrade Loop to v0.12.2
+- Add separate Tor service for LNBits
+- UI Update - Pin open Lightning Details
+- UI Update - Add icons to Application page
+- Bug fix - Use proper RAM limits for Bitcoin
+- Bug fix - Run JoininBox in venv to prevent TX failures
+- Bug fix - Mempool database works on RP4 64-bit
+- Bug fix - Improve auto-setup of Specter config
+- Bug fix - LNDHub will re-install with performance patch
+
+=== v0.2.31 ===
+- Released: 05/02/21
+- Add support for 64-bit Raspberry Pi 4 Images
+- Upgrade Bitcoin to v0.21.1
+- Upgrade Specter to v1.3.1
+- Upgrade RTL to v0.10.2
+- Upgrade Sphinx Relay to v2.0.13
+- Upgrade LNDHub to v1.3.3
+- Update Lightning pairing options
+- More backend refactoring for managing applications
+- Bug Fixes
+
+=== v0.2.30 ===
+- Released: 04/18/21
+- Add Lightning Terminal v0.4.1
+- Upgrade Specter to v1.3.0
+- Upgrades to Pair Wallet UI
+- Upgrade Sphinx Relay to v2.0.11
+- Upgrade BTCPay Server to v1.0.7.2
+- Add Toggle for LND Watchtower
+- Show/Hide Toggle for Status Logs
+- Faster UI
+- Refactor backend for managing applications
+- Bug Fixes
+
+=== v0.2.29 ===
+- Released: 03/28/21
+- Sphinx Relay uses Tor (new pairings only)
+- Update Electrum Rust Server to v0.8.9
+- Onion URLs are backed up on the external drive
+- Live updates for channel information
+- Upgrade Sphinx Relay to v2.0.6
+- Upgrade Thunderhub to v0.12.12
+- Upgrade Loop to v0.12.1
+- Add configurable session timeouts
+- UI Improvements
+- Bug Fixes
+
+=== v0.2.28 ===
+- Released: 03/17/21
+- Upgrade Dojo to v1.9.0
+- Upgrade Whirlpool to v0.10.10
+- Upgrade JoininBox to v0.3.0
+- Upgrade JoinMarket to v0.8.2
+- Upgrade lndhub to v1.3.0
+- Upgrade LNBits to v0.2.0
+- UI Improvements
+- Add Testnet toggle
+- Add app icon for JoininBox / JoinMarket
+- Add button to restart Electrum server
+- Bug fixes and performance improvements
+
+=== v0.2.27 ===
+- Released: 02/24/21
+- Add JoininBox v0.2.0
+- Add Bitcoin whitepaper download
+- Upgrade Mempool to v2.1.2
+- Upgrade Loop to v0.11.4
+- Upgrade RTL to v0.10.1
+- Upgrade Specter to v1.2.2
+- Upgrade LND to v0.12.1
+
+=== v0.2.26 ===
+- Released: 02/13/21
+- Add CKBunker v0.9 (beta)
+- Add Sphinx Relay v1.3.8 (beta)
+- Upgrade Thunderhub to v0.12.7
+- Upgrade JoinMarket to v0.8.1
+- Improve drive detection for Clone Tool
+- Bug Fixes
+
+=== v0.2.25 ===
+- Released: 02/05/21
+- Improve drive detection for Clone Tool
+
+=== v0.2.24 ===
+- Released: 02/04/21
+- Upgrade Bitcoin to v0.21.0
+- Upgrade LND to v0.12.0
+- Upgrade JoinMarket to v0.8.0
+- Upgrade Specter to v1.1.0
+- Add Clone Tool
+- Add drive space warnings
+- Bug fixes and minor UI improvements
+
+=== v0.2.23 ===
+- Released: 01/25/21
+- Update BTC RPC Explorer to v2.2.0
+- Use SSO for securing BTC RPC Explorer access
+- Move all Dojo files to external drive
+- Improve Dojo status messages
+- Bug Fixes
+
+=== v0.2.22 ===
+- Released: 01/16/21
+- Upgrade Caravan to v0.3.5
+- Fix issue with Mempool on HTTPS
+- Upgrade Specter to v1.0.0
+- Improve upgrade logs
+- Add option to remount and reformat external drive
+- Bug Fixes
+
+=== v0.2.21 ===
+- Released: 01/02/21
+- Update Loop to v0.11.2
+- Upgrade RTL to v0.10.0
+- Upgrade Thunderhub to v0.12.2
+- Upgrade BTC RPC Explorer to v2.1.0
+- Upgrade Caravan to v0.3.4
+- Upgrade Pool to v0.3.4
+- Increase Bitcoin rpcworkqueue to 32
+- Add Onion URL for Whirlpool
+
+=== v0.2.20 ===
+- Released: 12/20/20
+- Upgrade Specter to v0.10.4
+- Upgrade Thunderhub to v0.11.0
+- Upgrade Whirlpool CLI to v0.10.9
+- Upgrade BTCPay Server to v1.0.6.2
+- Bug fixes
+
+=== v0.2.19 ===
+- Released: 11/27/20
+- Add Pool
+- Upgrade electrs to v0.8.6
+- Upgrade Specter to v0.10.1
+- Upgrade Thunderhub to v0.10.5
+- Add Whirlpool log to status page
+- Move loop files to external drive
+
+=== v0.2.18 ===
+- Upgrade LND to v0.11.1
+- Upgrade Loop to v0.9.0
+- Upgrade RTL to v0.9.3
+- Upgrade Thunderhub to v0.10.1
+- Upgrade Specter to v0.9.2
+- Upgrade BTCPayServer to v1.0.5.9
+- Upgrade Mempool to v1.0.1
+- Add re-install option for BTCPayServer
+- Bug fixes
+
+=== v0.2.17 ===
+- Major UI Update
+- Upgrade Dojo to v1.8.0
+- Upgrade Thunderhub to v0.9.15
+- Upgrade Specter to v0.8.1
+- Bug Fixes
+
+=== v0.2.16 ===
+- Upgrade Caravan to v0.3.3 
+- Upgrade Joinmarket to v0.7.0
+- Upgrade Specter to v0.7.2
+- Upgrade Thunderhub to v0.9.8
+- Upgrade RTL to v0.9.0
+- Upgrade Whirlpool to v0.10.8
+- Add foundation for improved app management
+- Generate Bitcoin config based on total RAM
+- Improve finding initial Bitcoin peers
+- Add detection for undervoltage, throttling, and capping on Raspi devices
+- Fix issue where status page may not load if no drive is found
+- Fix issue with VM drive detection
+
+=== v0.2.15 ===
+- Upgrade LND to v0.11.0
+- Upgrade Loop to v0.8.0
+- Improve UI on Bitcoin CLI Page
+- Use NGINX for Electrum Server port 50002
+- Improve Desktop UI when using a VM or monitor with mouse/keyboard
+- Bug fixes
+
+=== v0.2.14 ===
+- Update Bitcoin to v0.20.1
+- Upgrade Specter to v0.6.0
+- Upgrade Thunderhub to v0.9.0
+- Upgrade RTL to v0.8.3
+- Add NGINX for HTTPS
+- Add HTTPS for rtl, thunderhub, lnbits, lndhub, and btc rpc explorer
+- Bug fixes and refactoring
+
+=== v0.2.13 ===
+- Upgrade Caravan to v0.3.2
+- Upgrade RTL to v0.8.2
+- Bug fixes and refactoring
+
+=== v0.2.12 ===
+- Add Thunderhub v0.8.13
+- Upgrade Specter to v0.5.5
+- Decrease CPU usage when electrum wallet is using MyNode
+- Use gunicorn for HTTPS
+- Add tor service for lnbits, caravan, and specter
+- Fix serial on RockPro64 devices
+- Move RTL settings to external drive
+- Various UI improvements
+- Bug fixes
+
+=== v0.2.11 ===
+- Update electrs to v0.8.5
+- Add Specter Desktop v0.5.2
+- Upgrade LND to v0.10.3
+- Upgrade BTC RPC Explorer to v2.0.2
+- Fix config issue with LNbits
+- Fix issue causing reboot to get stuck at starting
+- Add raspbian mirrors for more consistent upgrades
+
+=== v0.2.10 ===
+- Add LNBits
+- Upgrade LND to v0.10.1
+- Upgrade Loop to v0.6.4
+- Upgrade BTC RPC Explorer to v2.0.1
+- Use tor for key checks and upgrades
+- Add HTTPS for Caravan
+- Move Whirlpool files to HDD
+- HTTPS Certificate Improvements
+- UI Improvements and Bug Fixes
+
+=== v0.2.09 ===
+- Upgrade Bitcoin to 0.20.0
+- Add Caravan
+- Set swap size default to 2GB
+- Swap size is configurable
+- Add reboot/shutdown to home page
+- UI Improvements
+- Bug fixes
+
+=== v0.2.08 ===
+- Rate limit web logins to 5 failures / 5 min
+- Show more lnd info while logging in
+- Fix lnd restart issue
+- Bug fixes and UI enhancements
+
+=== v0.2.07 ===
+- Add Install/Uninstall for Dojo
+- Upgrade BTCPayServer to v1.0.4.4
+- Improve LND login timing
+- Add Loopd log to status page
+- Add mynode-lnd-unlock command
+- Minor improvements
+
+=== v0.2.06 ===
+- Add Docker container info to status page
+- Add option to run apt-get upgrade via tor
+- Add Onion URL for BTCPay Server
+- Add more MyNode CLI commands
+- Upgrade RTL to v0.7.1
+- Add more detail to lnd status
+- Bug fixes and minor improvements
+
+=== v0.2.05 ===
+- Upgrade LND to v0.10.0
+- Upgrade Loop to v0.6.0
+- Upgrade JoinMarket to 0.6.2
+- Upgrade lndmanage to v0.10.0
+- Upgrade Whirlpool client to v0.10.5
+- Add link between settings and status pages
+- Minor bug fixes and improvements
+
+=== v0.2.04 ===
+- Improve reboot / shutdown consistency
+- Separate settings and status pages
+- Detect and alert user to SD card problems
+- Bug Fixes
+
+=== v0.2.03 ===
+- Dojo uses electrum server
+- Add remote support for Tor v2 and v3
+- Add lnd accept-keysend option
+- Add LND SCB download to settings page
+- General UI improvements
+
+=== v0.2.02 ===
+- Update Dojo to 1.5.0
+- Add tracker status to Dojo page
+- Updates now upgrade system packages
+- Bug Fixes
+
+=== v0.2.01 ===
+- Update Whirlpool to v0.10.4
+- Add "do not unplug" warning
+- Explicitly add Onion URL to LND TLS cert
+- Bug fixes and minor improvements
+
+=== v0.2.00 ===
+- Add confirmation screen before drive format / setup
+- Add Fully Noded QR Code
+- Update Whirlpool to v0.10.3
+- Update BTC RPC Explorer to v2.0.0
+- Bug fixes
+
+=== v0.1.98 ===
+- Update RTL v0.7.0
+- Update Loop to v0.5.1
+- Add Docker reset option
+- Add Netdata reinstall option
+- Add more app logs on settings page
+- Fix Electrum Server Onion URL Link
+- Rename Mempool.Space to Mempool
+- Bug fixes
+
+=== v0.1.97 ===
+- Use v3 Onion addresses for remote access
+- Upgrade BTC to v0.19.1
+- Upgrade LND to v0.9.2
+- Upgrade Loop to v0.5.0
+- Improve Dojo installation
+- Bug fixes
+
+=== v0.1.96 ===
+- Add Dojo re-install option
+- Add UFW re-install option
+- Disable IPv6 in UFW and other firewall improvements
+- Improved MAC address initialization
+- New images get Python 3.7.6
+- Bug fixes
+
+=== v0.1.95 ===
+- Improve upgrade success
+
+=== v0.1.94 ===
+- Samourai Dojo
+- Improved beta release support
+- Show more status logs on settings page
+- Bug fixes
+
+=== v0.1.93 ===
+- Improve docker container consistency
+- Improve SSD detection re QuickSync
+- Hide product key on settings page
+- Early beta upgrade support
+- Bug fixes
+
+=== v0.1.92 ===
+- Update RTL to v0.6.7
+- Clean rootfs before release
+- Add and tor repos with up to date packages
+- Bug fixes
+
+=== v0.1.91 ===
+- Add PCIe NVME Support for RockPro64
+- Update web logo images
+- Add firewall info to settings page
+- Add Tor reinstall option
+- Improve QuickSync bandwidth
+
+=== v0.1.90 ===
+- Setup proper RTL config for v0.6.4+
+- Use working version of PiVPN
+
+=== v0.1.89 ===
+- Add fan controller for RockPro64
+- Reduce space used for logs
+- Bug fixes
+
+=== v0.1.88 ===
+- Mempool.Space bug fix
+- Update loopd service file
+
+=== v0.1.87 ===
+- Rollback Tor update
+- Add Lightning Loop v0.4.0
+- Improve Mempool.Space consistency
+
+=== v0.1.86 ===
+- Upgrade Tor to v0.4.2.5
+- Fix boot issue for VMs that don't have USB
+- Fix VPN issue by checking out specific rev of PiVPN
+- Update lndmanage to 0.9.0
+- Add startup status to settings page
+- Add Electrum Server reset option
+- Bug fixes
+
+=== v0.1.85 ===
+- Update RTL to v0.6.4
+- Add deposit address, balance, channel, and peer info to Lightning Page
+- Add WebSSH2, Glances, Netdata and Whirlpool to Tor
+- Improve lograte to limit disk/RAM usage
+- Add Tor/IP toggle for Bitcoin and LND
+- Improve key generation
+- Bug fixes
+
+=== v0.1.84 ===
+- Fix issue copying files after an upgrade
+- Add button to reset Whirlpool config
+- Enable LndHub upgrades
+- Improve UI for app reinstallation
+- Fix issue getting stuck at "Drive Mounted"
+
+=== v0.1.83 ===
+- Revert 0.1.82
+
+=== v0.1.82 ===
+- Improve upgrade consistency
+
+=== v0.1.81 ===
+- Upgrade LND to 0.9.0
+- Upgrade RTL to v0.6.3
+- Small drives will skip QuickSync
+- Improve upgrade consistency
+- Improve LND login consistency
+- Add option to reinstall applications
+- Add host SSH capability to BTCPay server
+
+=== v0.1.80 ===
+- Add BTCPay Server
+- Whirlpool is part of community edition
+- Disable Wifi MAC Randomization
+- Add Mempool.Space port to Tor access
+- Bug fixes
+
+=== v0.1.79 ===
+- Upgrade BTC RPC Explorer to v1.1.8
+- Fix issue hidden sidebar on RTL
+- Add disabled status for services on settings page
+
+=== v0.1.78 ===
+- Fix issue displaying main page
+
+=== v0.1.77 ===
+- Upgrade Whirlpool CLI to v0.10.2
+- Upgrade RTL to v0.6.0
+- Improve settings page layout and info
+
+=== v0.1.76 ===
+- Upgrade Whirlpool CLI to v0.10.1
+- Fix issue with building docker images
+- Add logout button
+- Add default password hint
+
+=== v0.1.75 ===
+- Basic Whirlpool support
+- Add Mempool.Space mempool viewer
+- BTC RPC Explorer v1.1.5
+- Improve tor status reporting
+- Automatically check drive on each boot
+
+=== v0.1.74 ===
+- Add option to restore channel backup when creating Lightning wallet
+- Upgrade LND to 0.8.2
+- Improved rockpro64 support
+- Improve public IP detection
+- Improve drive health monitoring
+- Fix VM Serial number calculation
+- Bug fixes
+
+=== v0.1.73 ===
+- Add button to regenerate lnd tls certificate
+- BTC RPC Explorer starts once electrs is ready
+- JoinMarket updated to v0.6.1
+- Improve RAM usage for Bitcoin 0.19.0
+
+=== v0.1.72 ===
+- Revert lndmanage upgrade (not available via pip)
+
+=== v0.1.71 ===
+- Improve upgrades
+- Improve networking
+- Faster NPM installs
+- More RockPro64 support
+- Improve device detections
+- Upgrade lndconnect to v0.2.0
+- Upgrade lndmanage to v0.8.1
+- Upgrade btc-rpc-explorer to v1.1.4
+- Update JoinMarket to v0.6.0
+- Upgrade RTL to v0.5.4
+- Performance improvements
+- General bug fixes
+
+=== v0.1.70 ===
+- Update LND to v0.8.1
+- Update Bitcoin to v0.19.0.1
+- Improve Upgrades
+
+=== v0.1.69 ===
+- Add GUI to HDMI output
+- Add WebSSH for easier SSH access
+- Improve Upgrades
+
+=== v0.1.68 ===
+- Install JoinMarket
+- Fix issues with Docker installation
+- Improve LND + BTC config for privacy
+- Another Tor fix
+
+=== v0.1.67 ===
+- Improve upgrade consistency
+- Improve resource usage of netdata
+- Add ability to disable netdata
+- Fix tor connection issue
+- Remove duplicate BTC Explorer
+- Handle 404 and 500 errors
+- Dark mode fixes
+
+=== v0.1.66 ===
+- Add netdata as first docker container
+- Improve QS options on settings page when QS is disabled
+
+=== v0.1.65 ===
+- Add UI Dark Mode
+- Improve LND Connect IP detection (again)
+- Refactor for electrum server improvements
+- Install docker and docker-compose dependency
+- Add glances
+
+=== v0.1.64 ===
+- Improve logging for upgrades
+- Remove LND Admin
+- Improve LND Connect IP detection
+- Add NTP Servers
+
+=== v0.1.63 ===
+- Fix issues related to custom BTC+LND config
+- Workaround LND deadlock after creating new wallet
+- Other minor fixes
+
+=== v0.1.62 ===
+- Add ability to customize LND and BTC config via GUI
+- Reorganized settings page
+- Add status logs for LND and Electrum Server
+- Add QuickSync bandwidth settings
+- Fixed bug where upgrades could incorrectly appear available
+
+=== v0.1.61 ===
+- Changed device detection
+- Better local IP detection
+- Bug fixes
+
+=== v0.1.60 ===
+- Improved electrum status
+- FullyNoded integration with Tor Link
+- Improve QuickSync Torrent Transition
+- Bug fixes
+
+=== v0.1.59 ===
+- Add HTTPS to Tor
+- SSDs skip QuickSync by default
+- Add lndmanage tool
+- Custom LND Config
+- GUI-wide password
+- View upgrade changes on settings page
+- Bug fixes: SSH key and PW generation, local upgrades
+
+=== v0.1.58 ===
+- Add improved debug info
+- View Bitcoin debug log on settings page
+- Improve Blockchain and QuickSync reset options
+- Improve BTC RPC Explorer settings
+- Bug fixes
+
+=== v0.1.56 / 0.1.57 ===
+- Automatically enable HTTPS service
+- Allow port 443 through firewall
+
+=== v0.1.55 ===
+- Add HTTPS option for connecting to web GUI
+- Add Bitcoin REST API Access via Tor
+- Add default password warning
+
+=== v0.1.54 ===
+- Cyclic reboot bug fix for SSD driver detection
+
+=== v0.1.53 ===
+ - Upgrade LND to v0.8.0 beta
+ - PGP verify LND and BTC for each upgrade
+ - Improve SSD support for Raspberry Pi 4
+
+=== v0.1.52 ===
+- Fix bug with device product key check
+- Improve drive mounting on Raspis w/ SSDs
+
+=== v0.1.51 ===
+- Logging and RAM tweaks for Rock64
+- Add ngrok for debugging
+- Upgrade RTL to 0.5.1
+
+=== v0.1.50 ===
+- Big fixes for MyNode VM (still beta)
+- Display footer on status page
+
+=== v0.1.49 ===
+- Update BTC RPC Explorer
+- Add way to customize Bitcoin config
+- Add beta x86 VM setup
+- Improve QuickSync uploader tool
+- Improve console logging
+- Add more info on Electrum Server page
+
+=== v0.1.48 ===
+- Add script to check for invalid blocks and auto-correct
+- Bug fixes
+- Improve logging
+- DNS improvements
+
+=== v0.1.47 ===
+- Improve Info on Using Electrum Server
+- Add Guide Links
+- Improve SSD power options
+
+=== v0.1.46 ===
+- Improve VPN consistency between device reboots
+- Tweak DNS settings
+
+=== v0.1.45 ===
+- Improve Tor webpage information
+- Add Tor services for RTL, LND Hub, GUI Access, and more
+
+=== v0.1.44 ===
+- Add changelog to settings page
+- Add shutdown option on settings page
+- LND Admin password will match the overall MyNode password
+
+=== v0.1.43 ===
+- Initial changelog
+- Add all the features!
+- Bitcoin Core
+- Lightning Daemon
+- Electrum Server
+- VPN
+- Tor
+- LND Hub
+- LND Connect
+- RTL
+- LND Admin
+- Set LND Alias
+- Monitor LND / Bitcoin Status
+- Bitcoin Explorer
+- Bitcoin CLI
+- Device Status
+- QuickSync
+- Drive Management
+- More...

@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>electrs</Name>
+  <Repository>ghcr.io/anym001/docker-electrs:latest</Repository>
+  <Registry>https://ghcr.io/anym001/docker-electrs</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://forums.unraid.net/topic/195410-support-anym001-application-dockers/</Support>
+  <Project>https://github.com/romanz/electrs</Project>
+  <Overview>
+Run your own Electrum server backed by your Bitcoin Core node!
+This container deploys Electrs, a fast and lightweight Electrum Rust Server that indexes your Bitcoin blockchain and provides a local Electrum-compatible API.
+Make sure your bitcoind container is running and the RPC/P2P ports are reachable by Electrs.
+Create an electrs.toml configuration file in your data directory.
+Project: https://github.com/romanz/electrs
+  </Overview>
+  <Category/>
+  <WebUI/>
+  <TemplateURL/>
+  <Icon>https://raw.githubusercontent.com/anym001/unraid-docker-templates/main/anym001/images/electrs.png</Icon>
+  <ExtraParams>--restart=unless-stopped</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled>1765050619</DateInstalled>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+  <Config Name="Data Dir" Target="/data" Default="" Mode="rw" Description="" Type="Path" Display="always" Required="false" Mask="false">/mnt/user/bitcoin/electrs</Config>
+  <Config Name="Bitcoind Dir" Target="/home/electrs/.bitcoin" Default="" Mode="ro" Description="" Type="Path" Display="always" Required="false" Mask="false">/mnt/user/bitcoin/bitcoind</Config>
+  <Config Name="Host Port 1" Target="50001" Default="" Mode="tcp" Description="" Type="Port" Display="always" Required="false" Mask="false">50001</Config>
+  <Config Name="PUID" Target="PUID" Default="" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
+  <Config Name="UMASK" Target="UMASK" Default="" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">002</Config>
+  <TailscaleStateDir/>
+</Container>

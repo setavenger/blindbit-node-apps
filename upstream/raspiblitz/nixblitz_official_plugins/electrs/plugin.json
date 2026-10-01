@@ -1,0 +1,76 @@
+{
+  "id": "electrs",
+  "version": "0.2.0",
+  "app_version": { "command": "electrs-app-version" },
+  "manifest": {
+    "schema_version": 4,
+    "min_tui_version": 1,
+    "name": "Electrs",
+    "description": "Run electrs (the Rust Electrum server) backed by this node's Bitcoin Core. Initial mainnet sync takes 6\u201318 h and ~45 GB of disk; bitcoind must be unpruned (the upstream module enforces this)."
+  },
+  "branches": {
+    "stable": {
+      "ref": "main",
+      "description": "Production releases",
+      "default": true
+    }
+  },
+  "config_schema": {
+    "label": "Electrs",
+    "description": "Run electrs (the Rust Electrum server) backed by this node's Bitcoin Core.",
+    "capabilities": [],
+    "fields": [
+      {
+        "name": "enabled",
+        "type": "bool",
+        "label": "Enabled",
+        "default": false
+      },
+      {
+        "name": "address",
+        "type": "string",
+        "label": "Bind address (Electrum RPC + monitoring)",
+        "default": "127.0.0.1"
+      },
+      {
+        "name": "port",
+        "type": "int",
+        "label": "Electrum RPC port",
+        "default": 50001
+      },
+      {
+        "name": "db_dir",
+        "type": "string",
+        "label": "Index database directory",
+        "default": "/var/lib/electrs"
+      },
+      {
+        "name": "open_firewall",
+        "type": "bool",
+        "label": "Open Electrum RPC port on the LAN",
+        "default": false
+      }
+    ]
+  },
+  "actions": {
+    "restart": {
+      "label": "Restart electrs",
+      "description": "Stops and restarts the electrs service. Use after editing config or when the index is misbehaving. Does NOT wipe the index \u2014 see README for the manual reindex procedure.",
+      "unit": "electrs-plugin-restart.service",
+      "confirm": true,
+      "timeout_seconds": 60
+    }
+  },
+  "permissions": {
+    "bitcoin": ["rpc:read"],
+    "network": ["outbound"],
+    "privileged_units": ["electrs-plugin-restart.service"]
+  },
+  "dashboard": {
+    "title": "Electrs",
+    "accent_color": "#ff9500",
+    "command": "electrs-tile-state",
+    "poll_interval_seconds": 30,
+    "timeout_seconds": 5
+  }
+}

@@ -1,0 +1,325 @@
+# Environment Setup
+
+Before building service packages, you need to install several development tools on your workstation. This page lists each prerequisite and how to install it. The final section — [Set Up Your Packaging Workspace](#set-up-your-packaging-workspace) — scaffolds the AI-assisted workspace that all packaging is designed around.
+
+> [!NOTE]
+> The **Linux** examples below install packages with `apt`, for Debian-based distros (Debian, Ubuntu, Mint, PopOS, …). On another distro, use your package manager to install the same packages.
+
+## StartOS Device
+
+You must have a computer running StartOS to test your packages. Follow the [installation guide](/start-os/installing-startos.html) to install StartOS on a physical device or VM.
+
+## Docker
+
+[Docker](https://docs.docker.com/get-docker/) is essential for building and managing container images that will be used for the final `.s9pk` build. It handles pulling base images and building custom container images from Dockerfiles.
+
+Follow the [official Docker installation guide](https://docs.docker.com/engine/install/) for your platform.
+
+Docker must be **running** when you build a package, and your user must be able to use it:
+
+{{#tabs global="platform"}}
+
+{{#tab name="Linux"}}
+
+The daemon runs as a service — start it with `sudo systemctl start docker`. By default only root can talk to it, so add your user to the `docker` group once (then **log out and back in**), otherwise every build fails with `permission denied ... /var/run/docker.sock`:
+
+```sh
+sudo usermod -aG docker $USER
+```
+
+{{#endtab}}
+
+{{#tab name="Mac"}}
+
+Start Docker Desktop; it runs the daemon for you. (Docker Desktop covers Windows too.)
+
+{{#endtab}}
+
+{{#endtabs}}
+
+> [!TIP]
+> Confirm it works with `docker run --rm hello-world` before continuing.
+
+## Make
+
+[Make](https://www.gnu.org/software/make/) is a build automation tool used to execute build scripts defined in Makefiles and coordinate the packaging workflow (building and installing s9pk binaries to StartOS).
+
+{{#tabs global="platform"}}
+
+{{#tab name="Linux"}}
+
+```sh
+sudo apt install build-essential
+```
+
+{{#endtab}}
+
+{{#tab name="Mac"}}
+
+```sh
+xcode-select --install
+```
+
+{{#endtab}}
+
+{{#endtabs}}
+
+## Node.js v22 (Latest LTS)
+
+[Node.js](https://nodejs.org/en/) is required for compiling TypeScript code used in StartOS package configurations.
+
+The recommended installation method is [nvm](https://github.com/nvm-sh/nvm). If you don't already have `nvm`, install it, then **close and reopen your terminal** (or `source ~/.bashrc` / `source ~/.zshrc`) so the `nvm` command is available:
+
+```sh
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+```
+
+Then install and select Node.js v22:
+
+```sh
+nvm install 22
+nvm use 22
+```
+
+Alternatively, download Node.js v22 (or newer) directly from [nodejs.org](https://nodejs.org/) — make sure `node --version` reports v22+ afterward.
+
+## SquashFS
+
+SquashFS is used to create compressed filesystem images that package your compiled service code.
+
+{{#tabs global="platform"}}
+
+{{#tab name="Linux"}}
+
+```sh
+sudo apt install squashfs-tools squashfs-tools-ng
+```
+
+{{#endtab}}
+
+{{#tab name="Mac"}}
+
+Requires [Homebrew](https://brew.sh/):
+
+```sh
+brew install squashfs
+```
+
+{{#endtab}}
+
+{{#endtabs}}
+
+## cURL
+
+[cURL](https://curl.se/) downloads the `start-cli` installer script in the next step. It is pre-installed on macOS and most Linux systems; install it if missing.
+
+{{#tabs global="platform"}}
+
+{{#tab name="Linux"}}
+
+```sh
+sudo apt install curl
+```
+
+{{#endtab}}
+
+{{#tab name="Mac"}}
+
+Already included.
+
+{{#endtab}}
+
+{{#endtabs}}
+
+## Start CLI
+
+[start-cli](https://github.com/Start9Labs/start-technologies) is the core development toolkit for building StartOS packages. It provides package validation, s9pk file creation, and development workflow management.
+
+Install using the automated installer script:
+
+```sh
+curl -fsSL https://start9.com/start-cli/install.sh | sh
+```
+
+On Debian and its derivatives — Ubuntu, Raspberry Pi OS, Linux Mint — the script adds the Start9 apt repository and installs the `start-cli` package to `/usr/bin`, so `sudo apt update && sudo apt upgrade` picks up later releases. On macOS and every other Linux distribution it downloads the release binary into `~/.local/bin` and adds that directory to your `PATH`; re-running the same command is how you update it there.
+
+`start-cli` installs outside your workspace, so [Keep it current](#keep-it-current) does not touch it. You don't have to track it yourself either: an `s9pk` command run inside a workspace whose checkout names a newer release prints a one-line notice saying so.
+
+## Git
+
+[Git](https://git-scm.com/) is used by `start-cli s9pk init-workspace` to fetch the Start9 monorepo — the packaging guide, and the SDK and OS source behind it — and to keep it up to date afterward.
+
+{{#tabs global="platform"}}
+
+{{#tab name="Linux"}}
+
+```sh
+sudo apt install git
+```
+
+{{#endtab}}
+
+{{#tab name="Mac"}}
+
+Installed with the Command Line Tools (`xcode-select --install`, above), or `brew install git`.
+
+{{#endtab}}
+
+{{#endtabs}}
+
+## jq
+
+The build uses [jq](https://jqlang.github.io/jq/) to read your package's manifest and print the build summary, so it must be installed.
+
+{{#tabs global="platform"}}
+
+{{#tab name="Linux"}}
+
+```sh
+sudo apt install jq
+```
+
+{{#endtab}}
+
+{{#tab name="Mac"}}
+
+```sh
+brew install jq
+```
+
+{{#endtab}}
+
+{{#endtabs}}
+
+## Verification
+
+After installation, verify all tools are available:
+
+```sh
+docker --version
+docker run --rm hello-world   # confirms the daemon is running and you have access
+make --version
+node --version                # must be v22 or newer
+npm --version
+mksquashfs -version
+git --version
+curl --version
+jq --version
+start-cli --version
+```
+
+> [!TIP]
+> If any command is not found, revisit the installation steps for that tool and ensure it is on your system PATH. If `docker run --rm hello-world` fails, re-read the Docker note above (the daemon must be running, and on Linux your user must be in the `docker` group).
+
+## Set Up Your Packaging Workspace
+
+StartOS packaging is designed to be done with an AI coding agent. `start-cli` scaffolds an AI-ready **packaging workspace** in one command — a directory that holds the packaging guide and an agent-context file, so any assistant you open there already knows how to build a StartOS package. If you use [Claude Code](https://docs.anthropic.com/en/docs/claude-code), Start9 recommends the Opus 4.7 or later model.
+
+### Create the workspace
+
+```sh
+start-cli s9pk init-workspace start9-workspace
+cd start9-workspace
+```
+
+This clones the Start9 monorepo into `start-technologies/`, sets up the agent-context files (`AGENTS.md`, your own `AGENTS.local.md`, and a `CLAUDE.md` that loads both), links the fleet's [agent skills](#skills) where Claude Code and Codex look for them, and creates a `.startos/` directory that marks the workspace and holds your package-signing key and host/registry config:
+
+```
+start9-workspace/
+├── .startos/              ← workspace marker: build.key.pem (signs your packages) + config.yaml (hosts, registries)
+├── AGENTS.md              ← agent context (symlink to the guide's Agent Context page), read by AI assistants
+├── AGENTS.local.md        ← your own notes, kept across guide updates
+├── CLAUDE.md              ← loads AGENTS.md + AGENTS.local.md (Claude Code)
+├── .claude/skills         ← the packaging skills (symlink → start-technologies/projects/start-sdk/docs/skills), for Claude Code
+├── .agents/skills         ← the same skills, for Codex
+└── start-technologies/    ← the monorepo: the guide, the SDK source, the OS source
+```
+
+You get the **whole** monorepo, not just the guide. That's deliberate: when the guide can't settle a question, the SDK source (`projects/start-sdk/lib`) and the StartOS source (`projects/start-os`, `shared-libs/`) are right there to read — and if you find a bug, you're already in a repo you can open a pull request from. The clone is `--filter=blob:none`, so file contents are fetched on demand: it lands in a few seconds and takes ~75 MB, while `git log`, `git blame`, and rebase all behave normally.
+
+The checkout tracks **`live-docs`**, not `master`. That branch is what every product has published: each release moves it to the tagged tree for the product being released, so the guide you read, the template `init-package` scaffolds from, and the SDK source all describe the `@start9labs/start-sdk` that `npm install` resolves. `master` carries what hasn't shipped, where a page can document a call your package cannot import. It is also the branch docs.start9.com serves, and corrections to published pages land there first — so your local copy and the site are the same thing, and you get a fix the moment it goes live.
+
+The context lives once, at the workspace root — it is never copied into your package repos. **Start every AI session from the workspace root, never from inside a package repo.** From the root, your assistant picks up `AGENTS.md` / `CLAUDE.md` automatically; a session started in a package directory can miss them and work without the guide. You can read exactly what it contains on the [Agent Context](./agent-context.md) page.
+
+### Skills
+
+Beyond the always-on context, the guide ships **skills** — procedures an agent loads on demand to drive a whole job end to end, in the [Agent Skills](https://agentskills.io) format both Claude Code and Codex read. The one you want first is `package-service`: given a project name or an upstream URL, it researches the upstream and how people self-host it, settles the package's shape with you in one round of questions, then scaffolds, builds, and verifies the package on your StartOS device and hands it back for review.
+
+They live in the guide itself (`start-technologies/projects/start-sdk/docs/skills/`), so syncing the guide updates them like any page, and the workspace links them for you — `.claude/skills` and `.agents/skills` both point there, so a session opened at the workspace root has them. Invoke one by name:
+
+- **Claude Code:** `/package-service Vaultwarden`
+- **Codex:** `$package-service Vaultwarden`
+
+There is nothing to install anywhere else: the skills need the workspace as much as you do — `make`, `s9pk pack` and `init-package` all refuse to run outside one — so a workspace is where they live.
+
+### Already have the monorepo?
+
+Let the workspace clone its own anyway. A checkout you develop in sits on `master` and moves with your branches; the workspace's sits on `live-docs` and is only ever fast-forwarded — one checkout cannot be both, and pointing the workspace at yours would put the guide, the template, and the SDK source ahead of what your packages can install. The second copy is blobless, so it costs ~75 MB.
+
+To open a pull request against the monorepo, use your development checkout. Without one, branch the workspace's from `origin/master` and switch it back to `live-docs` when you're done.
+
+### Nested workspaces and config resolution
+
+Workspaces can be nested — running `init-workspace` inside another workspace is fine. When `start-cli` needs a workspace's signing key or targets (building, signing, reading `host`/`registry`), it walks **up** from the current directory and uses the nearest `.startos/`. So an inner workspace transparently overrides an outer one, and settings you don't override are inherited from above — conceptually a deep merge of every `.startos/` on the path, innermost first.
+
+The one thing `init-workspace` refuses is running **inside a package repo**: a workspace is the directory that _holds_ package repos, not a package itself. If you already have package repos, run `init-workspace` in the directory that contains them (their parent); building, signing, and publishing then walk up to find the workspace. Starting fresh, run it in a new directory, then `start-cli s9pk init-package` inside it.
+
+Until a workspace exists, `make` / `s9pk pack` / `s9pk publish` fail with a message pointing you to `init-workspace` — packaging is designed around the workspace (and its AI guide), so there is no build key to sign with until you create one.
+
+> [!NOTE]
+> There's no automatic migration from an older global `~/.startos`. To reuse a previous signing key, copy it into a workspace yourself: `cp ~/.startos/id.key.pem <workspace>/.startos/build.key.pem`.
+
+### Hosts and registries
+
+The `.startos/config.yaml` created with the workspace defines named **host** targets (your StartOS boxes) and **registry** targets:
+
+```yaml
+schema: 1
+# The StartOS devices you install to. Uncomment and set `default` to your own
+# box's address — shown in its web interface — to enable `make install`.
+# host:
+#   default: https://server-name.local
+registry:
+  default: https://alpha-registry-x.start9.com
+  beta: https://beta-registry.start9.com
+  prod: https://registry.start9.com
+```
+
+The `registry` entries are Start9's, pre-filled — you only need them if you plan to **publish** a package, so you can ignore them while testing locally.
+
+The `host` block is the StartOS devices you install to, and ships commented out because no address would be right for everyone. Uncomment it and set `default` to your own box. Its `.local` address is built from the server's **hostname** — which StartOS generates and you can change — so take the address from the StartOS web interface rather than guessing it from the server's name; its IP works too:
+
+```yaml
+host:
+  default: https://server-name.local
+```
+
+> [!TIP]
+> Setting `host.default` lets you install with `make install` — the recommended way to work on a package, since it builds and pushes to your device in one repeatable command. It also requires logging in once with `start-cli auth login` (it prompts for your StartOS master password). If you'd rather not set up the CLI yet, you can sideload the `.s9pk` through the web interface instead — see [Quick Start](./quick-start.md#install-to-startos).
+
+Any `start-cli` command takes `-H`/`--host` and `-r`/`--registry`. Pass a **profile name** to use one of these entries, or a **URL** to target something directly:
+
+```sh
+start-cli -H prod <command>                  # uses host.prod
+start-cli -r beta <command>                  # uses registry.beta
+start-cli -H https://my-box.local <command>  # a URL works too
+```
+
+With no flag, the `default` entry is used. `start-cli` finds this config by walking up from the current directory, so it works anywhere inside the workspace.
+
+> [!NOTE]
+> As of `@start9labs/start-sdk` 2.0, `make install` and `make publish` resolve their target through `start-cli` — the workspace `.startos/config.yaml` profiles, or `-H` / `-r`. See [Makefile](./makefile.md).
+
+### Keep it current
+
+The guide, the package template, the agent context, and the SDK source all live in `start-technologies/`, so syncing it refreshes everything at once. Pull it at the start of each session:
+
+```sh
+git -C start-technologies pull --ff-only
+```
+
+`live-docs` only ever moves forward, so this is always a fast-forward. It brings in two things: corrections to already-published pages, as soon as they go live on docs.start9.com, and — when a product is released — that product's whole tree at the release.
+
+There's no separate update command. Anything a newer `start-cli` adds to a workspace is filled in the first time any `start-cli` command runs inside it after updating, and re-running `init-workspace` on an existing workspace does the same on demand — it fills in only what's missing, and your `AGENTS.local.md` is never touched. If `start-technologies` has ended up on another branch, `init-workspace` and `init-package` say so; move it out of the workspace and rerun `init-workspace` to get a fresh checkout on `live-docs`.
+
+Your environment is ready. Continue to [Quick Start](./quick-start.md) to scaffold and build your first package inside the workspace.

@@ -1,0 +1,12 @@
+log_filters = "INFO"
+{% if plugins.bitcoin.info.network == "mainnet" %}
+network = "bitcoin"
+{% else %}
+network = "{{ plugins.bitcoin.info.network }}"
+{% endif %}
+db_dir = "/data/db"
+daemon_rpc_addr = "gateway.bitcoin.{{user}}.nirvati:8332"
+daemon_p2p_addr = "bitcoin.bitcoin.{{user}}.nirvati:8333"
+auth = "electrs-v2-{{user}}-main:{{ plugins.bitcoin.info.account_passwords.main }}"
+electrum_rpc_addr = "0.0.0.0:50001"
+server_banner = "Electrs on Nirvati"

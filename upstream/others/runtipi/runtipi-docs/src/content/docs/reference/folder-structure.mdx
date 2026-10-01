@@ -1,0 +1,160 @@
+import { Callout, FileTree } from "nextra/components";
+
+# Folder Structure
+
+This page describes the default host-side layout of a Runtipi installation.
+
+<FileTree>
+  <FileTree.Folder name="runtipi" defaultOpen>
+    <FileTree.Folder name="app-data" defaultOpen>
+      <FileTree.Folder name="migrated" defaultOpen>
+        <FileTree.Folder name="app1" />
+        <FileTree.Folder name="app2" />
+      </FileTree.Folder>
+    </FileTree.Folder>
+    <FileTree.Folder name="apps" defaultOpen>
+      <FileTree.Folder name="migrated" defaultOpen>
+        <FileTree.Folder name="app1" />
+        <FileTree.Folder name="app2" />
+      </FileTree.Folder>
+    </FileTree.Folder>
+    <FileTree.Folder name="backups" defaultOpen>
+      <FileTree.Folder name="migrated" defaultOpen>
+        <FileTree.Folder name="app1" />
+        <FileTree.Folder name="app2" />
+      </FileTree.Folder>
+    </FileTree.Folder>
+    <FileTree.Folder name="logs" defaultOpen>
+      <FileTree.File name="app.log" />
+      <FileTree.File name="error.log" />
+    </FileTree.Folder>
+    <FileTree.Folder name="media" defaultClosed>
+      <FileTree.Folder name="data" defaultClosed>
+        <FileTree.Folder name="books" />
+        <FileTree.Folder name="comics" />
+        <FileTree.Folder name="images" />
+        <FileTree.Folder name="movies" />
+        <FileTree.Folder name="music" />
+        <FileTree.Folder name="podcasts" />
+        <FileTree.Folder name="roms" />
+        <FileTree.Folder name="tv" />
+      </FileTree.Folder>
+      <FileTree.Folder name="downloads" defaultClosed>
+        <FileTree.Folder name="watch" />
+        <FileTree.Folder name="complete" />
+        <FileTree.Folder name="incomplete" />
+      </FileTree.Folder>
+      <FileTree.Folder name="torrents" defaultClosed>
+        <FileTree.Folder name="watch" />
+        <FileTree.Folder name="complete" />
+        <FileTree.Folder name="incomplete" />
+      </FileTree.Folder>
+      <FileTree.Folder name="usenet" defaultClosed>
+        <FileTree.Folder name="watch" />
+        <FileTree.Folder name="complete" />
+        <FileTree.Folder name="incomplete" />
+      </FileTree.Folder>
+    </FileTree.Folder>
+    <FileTree.Folder name="repos" defaultOpen>
+      <FileTree.Folder name="migrated" />
+      <FileTree.Folder name="other-app-store" />
+    </FileTree.Folder>
+    <FileTree.Folder name="state" defaultOpen>
+      <FileTree.File name="settings.json" />
+    </FileTree.Folder>
+    <FileTree.Folder name="traefik" defaultOpen>
+      <FileTree.Folder name="dynamic" />
+      <FileTree.Folder name="shared" />
+      <FileTree.Folder name="tls" />
+      <FileTree.File name="traefik.yml" />
+    </FileTree.Folder>
+    <FileTree.Folder name="user-config" defaultOpen>
+      <FileTree.Folder name="migrated" defaultOpen>
+        <FileTree.Folder name="app1" />
+        <FileTree.Folder name="app2" />
+      </FileTree.Folder>
+      <FileTree.File name="tipi-compose.yml" />
+    </FileTree.Folder>
+    <FileTree.File name="docker-compose.yml" />
+    <FileTree.File name="runtipi-cli" />
+    <FileTree.File name="VERSION" />
+    <FileTree.File name=".env" />
+    <FileTree.File name=".env.local" />
+  </FileTree.Folder>
+</FileTree>
+
+## App Data
+
+The `app-data` folder contains persistent data for installed apps. Each app store has its own subfolder, and each app gets its own directory inside that store folder.
+
+<Callout>
+  Multi app-store support was introduced in Runtipi 4. Apps migrated from older
+  installs typically live under the `migrated` store slug.
+</Callout>
+
+## Apps
+
+The `apps` folder contains the installed copy of each app definition. This usually includes `config.json`, the app source `docker-compose.yml`, generated files such as `docker-compose.generated.yml`, and metadata assets.
+
+## Backups
+
+The `backups` folder contains per-app backup archives. Backups are organized by store slug and app name.
+
+## Logs
+
+The `logs` folder contains Runtipi logs:
+
+<FileTree>
+  <FileTree.Folder name="logs" defaultOpen>
+    <FileTree.File name="app.log" />
+    <FileTree.File name="error.log" />
+  </FileTree.Folder>
+</FileTree>
+
+`app.log` contains general runtime logs, while `error.log` contains failures and stack traces.
+
+## Media
+
+The `media` folder stores shared media directories that multiple apps can use. Unlike app-specific data, this folder is meant to be shared across your media stack.
+
+## Repos
+
+The `repos` folder contains cloned app store repositories. Each repository is stored under its app store slug, not under a hash.
+
+## State
+
+The `state` folder contains instance state such as `settings.json` and other internal files used during startup, authentication, and maintenance operations.
+
+## Traefik
+
+The `traefik` folder contains the generated Traefik config, dynamic config, shared ACME state, and local TLS files.
+
+## User Config
+
+The `user-config` folder contains user overrides. Each app store has its own subfolder, and each app folder can contain a custom `docker-compose.yml` and `app.env`. See [Customize app config](/docs/guides/customize-app-config).
+
+You can also customize the main Runtipi stack with `user-config/tipi-compose.yml`. See [Customize Runtipi compose and traefik config](/docs/guides/customize-compose-and-traefik).
+
+## Docker Compose
+
+`docker-compose.yml` is the main stack file for your Runtipi instance. It is generated and managed by the CLI, so you should not edit it directly. Use `user-config/tipi-compose.yml` if you need overrides.
+
+## Runtipi CLI
+
+`runtipi-cli` is the command-line tool used to start, stop, update, and troubleshoot your installation. See [Using the CLI](/docs/reference/using-the-cli).
+
+## Version
+
+`VERSION` stores the currently installed Runtipi version.
+
+## Environment
+
+`.env` contains the generated runtime environment for the current installation. It is rewritten during startup, so permanent changes should be made through settings or a custom env file instead.
+
+## Local Environment
+
+`.env.local` does not exist by default. You can create it and pass it to the CLI with `--env-file`. See [Custom environment variables](/docs/guides/custom-environment-variables).
+
+## PostgreSQL data
+
+Runtipi's PostgreSQL data is stored in the Docker volume `pgdata`, not as a normal folder inside the project directory.

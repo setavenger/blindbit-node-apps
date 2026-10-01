@@ -1,0 +1,559 @@
+---
+title: Mempool explorer
+description: Self-hosted Bitcoin mempool visualizer and block explorer. Build Mempool v3 from source, MariaDB backend, Caddy HTTPS on port 4080.
+---
+
+[Mempool](https://github.com/mempool/mempool) is the same open-source
+code that runs mempool.space, self-hosted on your own node. Transaction
+lookups, fee estimates, and UTXO queries stay on your LAN and never
+reach a third party.
+
+This guide builds Mempool v%versions.mempool% from source. The backend
+stores indexed data in MariaDB and serves the API on port 8999. Caddy
+puts the Angular frontend behind HTTPS on port 4080.
+
+## Requirements
+
+- [Electrum server](/docs/bitcoin/electrum-server) running (Electrs on port 50001)
+- Node.js %versions.nodejs% installed (from the [BTC RPC Explorer guide](/docs/bitcoin/blockchain-explorer#install-nodejs) or standalone via `nodesource.com`)
+- Caddy installed (from the same guide or standalone via `caddyserver.com`)
+- ~5 GB free on the SSD: build artifacts under `/home/mempool/` take 4-5 GB; the MariaDB database starts small but
+  grows to ~5 GB with full historical address indexing enabled
+- A Pi 5 with 8 GB of RAM. Older boards struggle, see below.
+
+<Callout type="warn" title="Pi 4 8 GB: expect instability">
+Mempool 3.x is memory-hungry. A community report on the v4 preview
+([raspibolt/raspibolt#1526](https://github.com/raspibolt/raspibolt/issues/1526))
+described the then-current Mempool 3.x release crashing on a Pi 4
+8 GB after a few hours of normal load, with a pinned older release
+being the only way to keep it stable. If you're on a Pi 4, either
+accept the operational risk, pin to an older Mempool release in
+[Install Mempool](#install-mempool) below
+(check `git tag` in the mempool repo and `git checkout v3.0.0` or a
+similar earlier tag instead of the default branch), or skip this
+guide and use a public mempool.space mirror over Tor for occasional
+lookups.
+</Callout>
+
+## Create the user
+
+A dedicated system user limits the blast radius of any bug. Adding it
+to the `bitcoin` group lets Mempool authenticate to Bitcoin Core via
+the cookie file, the same approach BTC RPC Explorer uses.
+
+Create the service user:
+
+```bash
+sudo adduser --disabled-password --gecos "" mempool
+```
+
+Add it to the `bitcoin` group:
+
+```bash
+sudo adduser mempool bitcoin
+```
+
+## Install build dependencies
+
+Mempool's backend includes a Rust-native block-template builder (GBT).
+Debian 13 Trixie ships Rust 1.85, which meets the 1.84 requirement:
+
+```bash
+sudo apt install rustc cargo
+```
+
+## Set up MariaDB
+
+```bash
+sudo apt install mariadb-server
+```
+
+Create the database and a dedicated user. Replace `YourPasswordM` with
+your **password [M]** (new, used only for MariaDB here):
+
+```bash
+sudo mysql <<'SQL'
+CREATE DATABASE mempool;
+GRANT ALL PRIVILEGES ON mempool.* TO 'mempool'@'localhost' IDENTIFIED BY 'YourPasswordM';
+SQL
+```
+
+## Install Mempool
+
+Clone and check out the release as the `mempool` user:
+
+```bash
+sudo -u mempool bash <<'EOF'
+git clone https://github.com/mempool/mempool ~/mempool
+cd ~/mempool
+git checkout v%versions.mempool%
+EOF
+```
+
+### Configure the backend
+
+Write the config file. Replace `YourPasswordM` with your **password [M]**:
+
+```bash
+sudo -u mempool tee /home/mempool/mempool/backend/mempool-config.json > /dev/null <<'CONFIG'
+{
+  "MEMPOOL": {
+    "NETWORK": "mainnet",
+    "BACKEND": "electrum",
+    "HTTP_PORT": 8999,
+    "SPAWN_CLUSTER_PROCS": 0,
+    "API_URL_PREFIX": "/api/v1/",
+    "POLL_RATE_MS": 2000,
+    "CACHE_DIR": "./cache",
+    "CACHE_ENABLED": true,
+    "CLEAR_PROTECTION_MINUTES": 20,
+    "RECOMMENDED_FEE_PERCENTILE": 50,
+    "BLOCK_WEIGHT_UNITS": 4000000,
+    "INITIAL_BLOCKS_AMOUNT": 8,
+    "MEMPOOL_BLOCKS_AMOUNT": 8,
+    "INDEXING_BLOCKS_AMOUNT": 0,
+    "AUDIT": false,
+    "RUST_GBT": true,
+    "CPFP_INDEXING": false,
+    "ALLOW_UNREACHABLE": true,
+    "PRICE_UPDATES_PER_HOUR": 1
+  },
+  "CORE_RPC": {
+    "HOST": "127.0.0.1",
+    "PORT": 8332,
+    "COOKIE": true,
+    "COOKIE_PATH": "/data/bitcoin/.cookie"
+  },
+  "ELECTRUM": {
+    "HOST": "127.0.0.1",
+    "PORT": 50001,
+    "TLS_ENABLED": false
+  },
+  "DATABASE": {
+    "ENABLED": true,
+    "HOST": "127.0.0.1",
+    "PORT": 3306,
+    "DATABASE": "mempool",
+    "USERNAME": "mempool",
+    "PASSWORD": "YourPasswordM"
+  },
+  "SOCKS5PROXY": {
+    "ENABLED": false
+  },
+  "STATISTICS": {
+    "ENABLED": true,
+    "TX_PER_SECOND_SAMPLE_PERIOD": 150
+  }
+}
+CONFIG
+```
+
+`INDEXING_BLOCKS_AMOUNT: 0` disables historical address indexing on
+first run. Once the node is stable, raise it to `4320` (30 days) or
+`11000` (about 3 months) to unlock address balance history in the UI.
+Restart the service after changing it.
+
+### Build the backend
+
+<Callout type="info" title="Build time: 10-20 minutes">
+`npm install` triggers a Rust compilation before installing Node.js packages.
+On a Pi 5 that takes 5-10 minutes. Run the commands in a `tmux` or
+`screen` session.
+</Callout>
+
+Switch to the `mempool` user:
+
+```bash
+sudo su - mempool
+```
+
+Move into the backend directory:
+
+```bash
+cd ~/mempool/backend
+```
+
+Install production dependencies (this is where Rust compiles GBT):
+
+```bash
+npm install --prod
+```
+
+Build the TypeScript backend:
+
+```bash
+npm run build
+```
+
+Drop back to `admin`:
+
+```bash
+exit
+```
+
+### Build the frontend
+
+<Callout type="info" title="Build time: 20-30 minutes">
+Run in the same `tmux` or `screen` session. A dropped SSH connection
+would abort the build.
+</Callout>
+
+Switch to the `mempool` user:
+
+```bash
+sudo su - mempool
+```
+
+Move into the frontend directory:
+
+```bash
+cd ~/mempool/frontend
+```
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Generate the theme bundle:
+
+```bash
+npm run generate-themes
+```
+
+Generate the runtime config:
+
+```bash
+npm run generate-config
+```
+
+Build the Angular app in production mode (English locale only):
+
+```bash
+npm run ng -- build --configuration production
+```
+
+Copy static assets into the build output:
+
+```bash
+npm run sync-assets
+```
+
+Drop back to `admin`:
+
+```bash
+exit
+```
+
+The built frontend lands in `~/mempool/frontend/dist/mempool/browser`.
+
+<Callout type="info" title="Why not npm run build?">
+The standard build script compiles all 33 translation locales, which
+takes several hours on a Pi. The commands above build only the English
+source locale and produce the same result.
+</Callout>
+
+## Autostart on boot
+
+Back as user `admin`, create the service file:
+
+```bash
+sudo nano /etc/systemd/system/mempool.service
+```
+
+Paste:
+
+```ini
+# RaspiBolt: systemd unit for Mempool
+# /etc/systemd/system/mempool.service
+
+[Unit]
+Description=Mempool Bitcoin Explorer
+After=network.target bitcoind.service electrs.service mariadb.service
+
+[Service]
+WorkingDirectory=/home/mempool/mempool/backend
+ExecStart=/usr/bin/node --max-old-space-size=2048 dist/index.js
+User=mempool
+Restart=on-failure
+RestartSec=60
+PrivateTmp=true
+ProtectSystem=full
+NoNewPrivileges=true
+PrivateDevices=true
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable the service so it starts on boot:
+
+```bash
+sudo systemctl enable mempool
+```
+
+Start it now:
+
+```bash
+sudo systemctl start mempool
+```
+
+Follow the log:
+
+```bash
+sudo journalctl -f -u mempool
+```
+
+Wait for a line containing `Listening on http://127.0.0.1:8999/`. On
+first start, Mempool syncs its database from Electrs and Bitcoin Core.
+Expect 30-60 minutes before fee charts and address lookups populate
+fully.
+
+Press `Ctrl`-`C` to stop following the log.
+
+## HTTPS on the LAN with Caddy
+
+Add a Mempool block to the Caddyfile (create the file first if Caddy
+was not already installed from the BTC RPC Explorer guide):
+
+1. Open the Caddyfile:
+
+   ```bash
+   sudo nano /etc/caddy/Caddyfile
+   ```
+
+2. Add the Mempool block after your existing blocks:
+
+   ```text
+   # Mempool Explorer
+   :4080 {
+     tls internal
+
+     handle /api/* {
+       reverse_proxy localhost:8999
+     }
+
+     handle {
+       root * /home/mempool/mempool/frontend/dist/mempool/browser
+       try_files {path} /index.html
+       file_server
+     }
+   }
+   ```
+
+   The `/api/*` block proxies API calls to the backend. Everything
+   else is served as a static file, falling back to `index.html` so
+   Angular's client-side routing works for deep links.
+
+3. Open the firewall port:
+
+   ```bash
+   sudo ufw allow 4080/tcp comment 'Mempool Explorer (Caddy)'
+   ```
+
+   Reload Caddy so it picks up the new block:
+
+   ```bash
+   sudo systemctl reload caddy
+   ```
+
+4. Point your browser at `https://raspibolt.local:4080`. Accept the
+   one-time certificate warning.
+
+**Main takeaway:** you now have a private Bitcoin block explorer and
+mempool visualizer. The node's own Electrs index answers every query.
+
+## Upgrade
+
+Read the [release notes](https://github.com/mempool/mempool/releases)
+before upgrading; some releases include a database migration.
+
+```bash
+sudo systemctl stop mempool
+```
+
+Switch to the `mempool` user:
+
+```bash
+sudo su - mempool
+```
+
+Move into the source tree:
+
+```bash
+cd ~/mempool
+```
+
+Fetch the latest tags:
+
+```bash
+git fetch
+```
+
+Check out the new release tag (replace `<new-version>` with the actual tag):
+
+```bash
+git checkout v<new-version>
+```
+
+Drop back to `admin`:
+
+```bash
+exit
+```
+
+Rebuild the backend. Switch to the `mempool` user:
+
+```bash
+sudo su - mempool
+```
+
+Move into the backend directory:
+
+```bash
+cd ~/mempool/backend
+```
+
+Refresh production dependencies:
+
+```bash
+npm install --prod
+```
+
+Build the backend:
+
+```bash
+npm run build
+```
+
+Drop back to `admin`:
+
+```bash
+exit
+```
+
+Rebuild the frontend. Switch to the `mempool` user:
+
+```bash
+sudo su - mempool
+```
+
+Move into the frontend directory:
+
+```bash
+cd ~/mempool/frontend
+```
+
+Refresh dependencies:
+
+```bash
+npm install
+```
+
+Regenerate the theme bundle:
+
+```bash
+npm run generate-themes
+```
+
+Regenerate the runtime config:
+
+```bash
+npm run generate-config
+```
+
+Rebuild the Angular app in production mode:
+
+```bash
+npm run ng -- build --configuration production
+```
+
+Copy static assets into the build output:
+
+```bash
+npm run sync-assets
+```
+
+Drop back to `admin`:
+
+```bash
+exit
+```
+
+Start the service:
+
+```bash
+sudo systemctl start mempool
+```
+
+Confirm it's running by skimming the recent log:
+
+```bash
+sudo journalctl -u mempool --since "5 minutes ago"
+```
+
+## Uninstall
+
+Stop the service:
+
+```bash
+sudo systemctl stop mempool
+```
+
+Disable it so it won't start on boot:
+
+```bash
+sudo systemctl disable mempool
+```
+
+Remove the unit file:
+
+```bash
+sudo rm /etc/systemd/system/mempool.service
+```
+
+Drop the firewall rule:
+
+```bash
+sudo ufw delete allow 4080/tcp
+```
+
+Remove the Mempool block from `/etc/caddy/Caddyfile`, then reload:
+
+```bash
+sudo systemctl reload caddy
+```
+
+Drop the database and user:
+
+```bash
+sudo mysql <<'SQL'
+DROP DATABASE mempool;
+DROP USER 'mempool'@'localhost';
+SQL
+```
+
+If MariaDB is no longer needed, remove the packages:
+
+```bash
+sudo apt remove --purge mariadb-server mariadb-client
+```
+
+Then drop any dependencies that are now unused:
+
+```bash
+sudo apt autoremove
+```
+
+Remove the user:
+
+```bash
+sudo deluser mempool
+```
+
+Delete its home directory:
+
+```bash
+sudo rm -rf /home/mempool
+```

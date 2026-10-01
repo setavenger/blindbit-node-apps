@@ -1,0 +1,15 @@
+store_version: 1
+
+id: nirvati-foss
+name: Nirvati FOSS apps
+tagline: A collection of fully FOSS apps built for Nirvati
+description:
+  This app store contains apps that are completely open source. It is the official app store for Nirvati, and is maintained by the Nirvati team.
+developers:
+  Nirvati UG (haftungsbeschränkt): https://nirvati.de
+license: AGPL-3.0-or-later
+icon: https://official-app-icons.nirvati.org/nirvati/icon.svg
+
+content:
+  # A map between minimum app-manager version -> apps subdir
+  v0.0.1: v1

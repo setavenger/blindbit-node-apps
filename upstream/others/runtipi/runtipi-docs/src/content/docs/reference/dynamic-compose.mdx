@@ -1,0 +1,527 @@
+import { Steps, Callout } from "nextra/components";
+import { JsonSchemaValidator, DockerComposeConverter } from "@/app/components";
+import {
+  toJsonSchema,
+  dynamicComposeSchema,
+  dynamicComposeSchemaArk,
+} from "@runtipi/common/schemas";
+
+# Dynamic Compose Reference
+
+Dynamic compose is Runtipi's app definition format for describing services, ports, volumes, and routing metadata. The preferred format is a standard `docker-compose.yml` file enhanced with `x-runtipi` metadata.
+
+## Quick Example
+
+```yaml
+services:
+  myapp:
+    image: myapp:latest
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+    environment:
+      - FOO=bar
+      - PASSWORD=${MYAPP_PASSWORD}
+    x-runtipi:
+      is_main: true
+      internal_port: 80
+
+x-runtipi:
+  schema_version: 2
+```
+
+This is all you need to deploy a web app with automatic Traefik routing, networking, and data persistence.
+
+## `x-runtipi` Metadata Reference
+
+Runtipi extends standard Docker Compose with `x-runtipi` metadata at two levels: **top-level** (document root) and **service-level** (per service).
+
+### Top-level `x-runtipi`
+
+Placed at the root of `docker-compose.yml`, alongside `services`:
+
+| Option           | Type     | Required | Description                                           |
+| ---------------- | -------- | -------- | ----------------------------------------------------- |
+| `schema_version` | `number` | Yes      | Must be `2`                                           |
+| `overrides`      | `array`  | No       | Architecture-specific service overrides (see [Architecture Overrides](#architecture-overrides)) |
+
+```yaml
+x-runtipi:
+  schema_version: 2
+```
+
+### Service-level `x-runtipi`
+
+Placed inside a service definition:
+
+| Option              | Type               | Required | Description                                                          |
+| ------------------- | ------------------ | -------- | -------------------------------------------------------------------- |
+| `is_main`           | `boolean`          | No       | Marks this service as the main app entry point (receives Traefik routing labels) |
+| `internal_port`     | `number \| string` | No       | The port the service listens on (used for Traefik routing)           |
+| `add_to_main_network` | `boolean`        | No       | Adds the service to Runtipi's shared network for cross-app communication |
+
+```yaml
+services:
+  app:
+    image: myapp:latest
+    x-runtipi:
+      is_main: true
+      internal_port: 8080
+```
+
+## Runtipi Variables
+
+Runtipi injects the following variables at runtime. You can reference them anywhere in your `docker-compose.yml`:
+
+| Variable              | Description                                                                 |
+| --------------------- | --------------------------------------------------------------------------- |
+| `${APP_DATA_DIR}`     | Absolute path to the app's persistent data directory on the host            |
+| `${APP_DOMAIN}`       | The domain or `host:port` the app is served on                              |
+| `${APP_PORT}`         | The host port mapped to the main service's `internal_port`                  |
+| `${APP_PROTOCOL}`     | `http` or `https` depending on whether the app is exposed with TLS          |
+| `${APP_ID}`           | The app identifier (e.g. `freshrss-oidc`) — not resolved in Traefik labels, use `{{RUNTIPI_APP_ID}}` there |
+| `${TZ}`               | The system timezone (e.g. `Europe/Berlin`)                                  |
+| `${RUNTIPI_MEDIA_DIR}`| Shared media directory path (e.g. for music, movies, photos)                |
+| `${UID}` / `${GID}`  | User and group ID of the Runtipi process                                    |
+
+Variables defined in the app's `config.json` `form_fields` are also available using their `env_variable` name.
+
+## Standard Docker Compose Features
+
+Everything else in your `docker-compose.yml` uses **standard Docker Compose syntax**. You don't need to learn any custom format for volumes, environment variables, ports, healthchecks, etc. Here are some commonly used options:
+
+### Volumes
+
+```yaml
+services:
+  app:
+    image: myapp:latest
+    volumes:
+      - ${APP_DATA_DIR}/config:/config
+      - ${APP_DATA_DIR}/data:/data:ro
+```
+
+Use `${APP_DATA_DIR}` for app-specific persistent data and `${RUNTIPI_MEDIA_DIR}` for shared media directories.
+
+### Environment Variables
+
+```yaml
+services:
+  app:
+    image: myapp:latest
+    environment:
+      - TZ=${TZ}
+      - DB_PASSWORD=${MYAPP_DB_PASSWORD}
+```
+
+You can reference variables defined in the app's `config.json` form fields using `${VARIABLE_NAME}`.
+
+### Ports
+
+Runtipi automatically maps `${APP_PORT}` to the main service's `internal_port` — you do not need to define this mapping yourself. For **additional** ports beyond the main one, expose them directly:
+
+```yaml
+services:
+  app:
+    image: myapp:latest
+    ports:
+      - "${APP_PORT}:8080/tcp"
+      - "25565:25565/udp"
+```
+
+### Health Checks
+
+```yaml
+services:
+  app:
+    image: myapp:latest
+    healthcheck:
+      test: curl --fail http://localhost:8080 || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+```
+
+### Dependencies
+
+```yaml
+services:
+  app:
+    image: myapp:latest
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16
+    healthcheck:
+      test: pg_isready -U postgres
+      interval: 10s
+      timeout: 5s
+      retries: 5
+```
+
+### Multi-Service Networking
+
+Runtipi automatically connects the **main service** to the shared `tipi_main_network` (used by Traefik for routing). Non-main services are isolated by default.
+
+Use `add_to_main_network: true` in a service's `x-runtipi` metadata when a non-main service also needs to be reachable via that network — for example, a reverse-proxy or bouncer that Traefik must forward requests to:
+
+```yaml
+services:
+  app:
+    image: myapp:latest
+    x-runtipi:
+      is_main: true
+      internal_port: 8080
+
+  app-bouncer:
+    image: myapp-bouncer:latest
+    environment:
+      - BOUNCER_API_KEY=${MYAPP_BOUNCER_API_KEY}
+      - AGENT_HOST=app:8080
+    depends_on:
+      - app
+    x-runtipi:
+      add_to_main_network: true
+
+x-runtipi:
+  schema_version: 2
+```
+
+Without `add_to_main_network: true`, Traefik cannot reach `app-bouncer` and requests routed through it will fail.
+
+### Resource Limits
+
+```yaml
+services:
+  app:
+    image: myapp:latest
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          devices:
+            - capabilities: [gpu]
+              driver: nvidia
+              count: 1
+```
+
+### Security Options
+
+```yaml
+services:
+  app:
+    image: myapp:latest
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges
+    read_only: true
+    user: "1000:1000"
+```
+
+### Other Options
+
+All standard Docker Compose options are supported, including `command`, `entrypoint`, `working_dir`, `network_mode`, `extra_hosts`, `hostname`, `dns`, `tty`, `stdin_open`, `stop_signal`, `stop_grace_period`, `pid`, `sysctls`, `logging`, `devices`, `labels`, `shm_size`, `ulimits`, and more. Refer to the [Docker Compose documentation](https://docs.docker.com/reference/compose-file/) for the full specification.
+
+## Architecture Overrides
+
+You can provide architecture-specific service overrides in the top-level `x-runtipi` metadata. This is useful when you need different Docker images or settings for arm64 vs amd64.
+
+```yaml
+services:
+  media-server:
+    image: mediaserver:latest
+    volumes:
+      - ${APP_DATA_DIR}/config:/config
+      - ${RUNTIPI_MEDIA_DIR}:/media
+    environment:
+      - TZ=UTC
+    x-runtipi:
+      is_main: true
+      internal_port: 8096
+
+x-runtipi:
+  schema_version: 2
+  overrides:
+    - architecture: arm64
+      services:
+        media-server:
+          image: mediaserver:arm64-latest
+          environment:
+            - ARM_SPECIFIC_VAR=enabled
+    - architecture: amd64
+      services:
+        media-server:
+          image: mediaserver:amd64-latest
+          deploy:
+            resources:
+              reservations:
+                devices:
+                  - capabilities: [gpu]
+```
+
+### How Overrides Work
+
+- Runtipi detects the system architecture and applies matching overrides
+- Service names in overrides must match the base service names
+- Only specify properties that differ per architecture
+- Properties are deep-merged with the base configuration
+- Array properties (like volumes or ports) in overrides **replace** the base arrays entirely
+
+### Supported Architectures
+
+- `amd64`: Standard 64-bit x86 (x86_64)
+- `arm64`: 64-bit ARM (aarch64)
+
+## Complete Example
+
+Here's a full example of a web app with a database:
+
+```yaml
+services:
+  app:
+    image: myapp:2.1.0
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+    environment:
+      - DATABASE_URL=postgresql://postgres:${MYAPP_DB_PASSWORD}@myapp-db:5432/myapp
+      - SECRET_KEY=${MYAPP_SECRET_KEY}
+    healthcheck:
+      test: curl --fail http://localhost:8080/health || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      myapp-db:
+        condition: service_healthy
+    x-runtipi:
+      is_main: true
+      internal_port: 8080
+
+  myapp-db:
+    image: postgres:16
+    volumes:
+      - ${APP_DATA_DIR}/db:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=myapp
+      - POSTGRES_PASSWORD=${MYAPP_DB_PASSWORD}
+    healthcheck:
+      test: pg_isready -U postgres
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+x-runtipi:
+  schema_version: 2
+```
+
+## Custom Traefik Labels
+
+Runtipi auto-generates all standard Traefik routing labels for the main service. You do **not** need to add them manually. When you need non-standard Traefik configuration — such as custom middlewares — add extra `labels:` to the main service.
+
+### `{{RUNTIPI_APP_ID}}` Placeholder
+
+Use `{{RUNTIPI_APP_ID}}` wherever you need the full app identifier. Runtipi's template engine substitutes this with `{app-id}-{store-slug}` (e.g. `myapp-migrated`) before passing the compose file to Docker. This matches the name used in all auto-generated Traefik labels, so you can reference the auto-generated router from your custom middleware.
+
+<Callout type="warning">
+  Do not use `${APP_ID}` in Traefik label keys or values — it is not resolved by
+  Runtipi's template engine and will remain as a literal string.
+</Callout>
+
+<Callout type="warning">
+  Do not use `${RUNTIPI_APP_ID}` in your `user-config` files — it is only resolved by Runtipi’s template engine during custom app creation.
+</Callout>
+
+### Example: Security Header Middlewares
+
+```yaml
+services:
+  myapp:
+    image: myapp:latest
+    labels:
+      # Enable gzip compression
+      - "traefik.http.middlewares.{{RUNTIPI_APP_ID}}-compress.compress=true"
+      # Add XSS protection header
+      - "traefik.http.middlewares.{{RUNTIPI_APP_ID}}-headers.headers.browserXssFilter=true"
+      # Force HSTS header even over HTTP
+      - "traefik.http.middlewares.{{RUNTIPI_APP_ID}}-headers.headers.forceSTSHeader=true"
+      # Deny iframe embedding (clickjacking protection)
+      - "traefik.http.middlewares.{{RUNTIPI_APP_ID}}-headers.headers.frameDeny=true"
+      # HSTS max-age: 1 year
+      - "traefik.http.middlewares.{{RUNTIPI_APP_ID}}-headers.headers.stsSeconds=31536000"
+      # Attach both middlewares to the auto-generated router
+      - "traefik.http.routers.{{RUNTIPI_APP_ID}}.middlewares={{RUNTIPI_APP_ID}}-compress,{{RUNTIPI_APP_ID}}-headers"
+    x-runtipi:
+      is_main: true
+      internal_port: 8080
+
+x-runtipi:
+  schema_version: 2
+```
+
+The last label attaches your custom middlewares to the auto-generated `{{RUNTIPI_APP_ID}}` router. Any additional middleware names you reference must also be defined as labels on the same service.
+
+---
+
+## Legacy JSON Format (`docker-compose.json`)
+
+<Callout type="warning">
+  The JSON format (`docker-compose.json`) is legacy and maintained for backward
+  compatibility only. Legacy files are automatically converted internally. **New
+  apps should use `docker-compose.yml`** with `x-runtipi` metadata as documented
+  above.
+</Callout>
+
+The legacy format uses a custom JSON structure instead of standard Docker Compose YAML. Key differences from the YAML format:
+
+- Uses camelCase property names (`isMain`, `internalPort`, `addToMainNetwork`) instead of `x-runtipi` metadata
+- Services are an array with a `name` field instead of a map
+- Environment variables use `[{key, value}]` array format instead of `KEY=value` strings
+- Volumes use `{hostPath, containerPath}` objects instead of `host:container` strings
+- Additional ports use `addPorts` with `{containerPort, hostPort, tcp, udp}` objects
+
+### Legacy JSON Validator
+
+You can validate legacy JSON configurations using the validator below:
+
+<JsonSchemaValidator
+  schema={dynamicComposeSchemaArk.toJsonSchema({ fallback: (ctx) => ctx.base })}
+  placeholder="Paste your legacy docker-compose.json configuration here to validate it..."
+/>
+
+### Legacy Configuration Options Reference
+
+#### Schema Configuration
+
+| Option        | Type     | Description                     |
+| ------------- | -------- | ------------------------------- |
+| schemaVersion | `number` | Schema version (must be 2)      |
+| services      | `array`  | Array of service configurations |
+| overrides     | `array`  | Architecture-specific overrides |
+
+#### Basic Configuration
+
+| Option      | Type                   | Description                           | Example                                                 |
+| ----------- | ---------------------- | ------------------------------------- | ------------------------------------------------------- |
+| name        | `string` (required)    | The name of the service and container | `"name": "nginx"`                                       |
+| image       | `string` (required)    | The Docker image to use               | `"image": "nginx:latest"`                               |
+| command     | `string` \| `string[]` | The command to run in the container   | `"command": "/my/app"` or `"command": ["npm", "start"]` |
+| environment | `array`                | Environment variables                 | `[{"key": "FOO", "value": "bar"}]`                      |
+
+#### Port Configuration
+
+| Option       | Type     | Description                            |
+| ------------ | -------- | -------------------------------------- |
+| internalPort | `number` | The main port exposed by the container |
+| addPorts     | `array`  | Additional ports to expose             |
+
+Example `addPorts`:
+
+```json
+"addPorts": [{
+  "containerPort": 8080,
+  "hostPort": 8080,
+  "tcp": true,
+  "udp": false,
+  "interface": "127.0.0.1"
+}]
+```
+
+#### Volume Configuration
+
+```json
+"volumes": [{
+  "hostPath": "/host/path",
+  "containerPath": "/container/path",
+  "readOnly": false,
+  "shared": false,
+  "private": false,
+  "bind": {
+    "propagation": "rprivate"
+  }
+}]
+```
+
+#### Network Configuration
+
+| Option           | Type                   | Description                   |
+| ---------------- | ---------------------- | ----------------------------- |
+| networkMode      | `string`               | Custom network mode           |
+| addToMainNetwork | `boolean`              | Add container to main network |
+| extraHosts       | `string[]`             | Additional /etc/hosts entries |
+| hostname         | `string`               | Container hostname            |
+| dns              | `string` \| `string[]` | Custom DNS servers            |
+
+#### Health Check Configuration
+
+```json
+"healthCheck": {
+  "test": "curl --fail http://localhost",
+  "retries": 3,
+  "interval": "30s",
+  "timeout": "10s",
+  "startInterval": "5s",
+  "startPeriod": "30s"
+}
+```
+
+#### Resource Configuration
+
+| Option  | Type     | Description                      |
+| ------- | -------- | -------------------------------- |
+| deploy  | `object` | Resource limits and reservations |
+| ulimits | `object` | Resource limits                  |
+| shmSize | `string` | Size of /dev/shm                 |
+
+#### Security Configuration
+
+| Option      | Type       | Description                            |
+| ----------- | ---------- | -------------------------------------- |
+| privileged  | `boolean`  | Run container with elevated privileges |
+| capAdd      | `string[]` | Add container capabilities             |
+| capDrop     | `string[]` | Drop container capabilities            |
+| securityOpt | `string[]` | Security options                       |
+| readOnly    | `boolean`  | Mount root filesystem as read only     |
+| user        | `string`   | Username or UID                        |
+
+#### Advanced Configuration
+
+| Option          | Type                   | Description                        |
+| --------------- | ---------------------- | ---------------------------------- |
+| entrypoint      | `string` \| `string[]` | Container entrypoint               |
+| workingDir      | `string`               | Working directory inside container |
+| tty             | `boolean`              | Allocate a pseudo-TTY              |
+| stdinOpen       | `boolean`              | Keep STDIN open                    |
+| stopSignal      | `string`               | Signal to stop the container       |
+| stopGracePeriod | `string`               | Time to wait to stop container     |
+| pid             | `string`               | PID namespace                      |
+| sysctls         | `object`               | Sysctl settings                    |
+| logging         | `object`               | Logging configuration              |
+| devices         | `string[]`             | Device mappings                    |
+| extraLabels     | `object`               | Additional container labels        |
+
+#### Dependencies
+
+| Option    | Type                   | Description                                      |
+| --------- | ---------------------- | ------------------------------------------------ |
+| dependsOn | `object` \| `string[]` | Service dependencies                             |
+| isMain    | `boolean`              | Indicates where traefik labels should be applied |
+
+### Docker Compose to Legacy JSON Converter
+
+If you need to convert an existing `docker-compose.yml` to the legacy JSON format:
+
+<DockerComposeConverter placeholder="Paste your docker-compose.yml content here to convert it to the legacy JSON format..." />
+
+<Callout type="warning">
+  The converter works for most cases, but please review the converted
+  configuration to ensure it meets your needs. Some advanced features may not be
+  fully supported.
+</Callout>

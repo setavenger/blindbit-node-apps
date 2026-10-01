@@ -1,0 +1,86 @@
+[
+  {
+    "Crypto": "ltc",
+    "CryptoFragment": "litecoin",
+    "CLightningFragment": null,
+    "LNDFragment": null,
+    "PhoenixdFragment": null
+  },
+  {
+    "Crypto": "btc",
+    "CryptoFragment": "bitcoin",
+    "CLightningFragment": "bitcoin-clightning",
+    "LNDFragment": "bitcoin-lnd",
+    "PhoenixdFragment": "phoenixd"
+  },
+  {
+    "Crypto": "ftc",
+    "CryptoFragment": "feathercoin",
+    "CLightningFragment": null,
+    "LNDFragment": null,
+    "PhoenixdFragment": null
+  },
+  {
+    "Crypto": "grs",
+    "CryptoFragment": "groestlcoin",
+    "CLightningFragment": "groestlcoin-clightning",
+    "LNDFragment": "groestlcoin-lnd",
+    "PhoenixdFragment": null
+  },
+  {
+    "Crypto": "dash",
+    "CryptoFragment": "dash",
+    "CLightningFragment": null,
+    "LNDFragment": null,
+    "PhoenixdFragment": null
+  },
+  {
+    "Crypto": "doge",
+    "CryptoFragment": "dogecoin",
+    "CLightningFragment": null,
+    "LNDFragment": null,
+    "PhoenixdFragment": null
+  },
+  {
+    "Crypto": "mona",
+    "CryptoFragment": "monacoin",
+    "CLightningFragment": null,
+    "LNDFragment": null,
+    "PhoenixdFragment": null
+  },
+  {
+    "Crypto": "xmr",
+    "CryptoFragment": "monero",
+    "CLightningFragment": null,
+    "LNDFragment": null,
+    "PhoenixdFragment": null
+  },
+  {
+    "Crypto": "bdx",
+    "CryptoFragment": "beldex",
+    "CLightningFragment": null,
+    "LNDFragment": null,
+    "PhoenixdFragment": null
+  },
+  {
+    "Crypto": "lbtc",
+    "CryptoFragment": "liquid",
+    "CLightningFragment": null,
+    "LNDFragment": null,
+    "PhoenixdFragment": null
+  },
+  {
+    "Crypto": "zec",
+    "CryptoFragment": "zcash",
+    "CLightningFragment": null,
+    "LNDFragment": null,
+    "PhoenixdFragment": null
+  },
+  {
+    "Crypto": "dcr",
+    "CryptoFragment": "decred",
+    "CLightningFragment": null,
+    "LNDFragment": null,
+    "PhoenixdFragment": null
+  }
+]

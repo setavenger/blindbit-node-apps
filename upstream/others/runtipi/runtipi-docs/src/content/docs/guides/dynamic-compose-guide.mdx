@@ -1,0 +1,337 @@
+import { Steps, Callout, Cards } from "nextra/components";
+import { JsonSchemaValidator, DockerComposeConverter } from "@/app/components";
+import { toJsonSchema, dynamicComposeSchema } from "@runtipi/common/schemas";
+import {
+  BookOpenIcon,
+  CodeBracketIcon,
+  PlusCircleIcon,
+} from "@heroicons/react/24/outline";
+
+# Creating a dynamic compose file
+
+Dynamic compose is Runtipi's app definition format for describing services, ports, volumes, and routing metadata. Apps are defined using a standard `docker-compose.yml` file with `x-runtipi` metadata.
+
+Here is a minimal `docker-compose.yml` for a simple Nginx app:
+
+```yaml
+services:
+  nginx:
+    image: nginx:1.25.3
+    x-runtipi:
+      is_main: true
+      internal_port: 80
+
+x-runtipi:
+  schema_version: 2
+```
+
+And that's it — with just a few lines of config you can deploy an Nginx app with automatic Traefik routing.
+
+## Creating your first app
+
+<Steps>
+
+### Create the docker-compose.yml
+
+Create a `docker-compose.yml` file in your app folder. Start with the top-level `x-runtipi` metadata and an empty `services` block:
+
+```yaml
+services:
+  # services go here
+
+x-runtipi:
+  schema_version: 2
+```
+
+The `schema_version` must be `2`. Make sure `dynamic_config` is set to `true` in your app's `config.json`.
+
+### Add a service
+
+Add your first service with a Docker image:
+
+```yaml
+services:
+  myapp:
+    image: myapp:latest
+
+x-runtipi:
+  schema_version: 2
+```
+
+### Expose the web UI
+
+If your service exposes a web UI, mark it as the main service with its port. Runtipi will automatically configure Traefik routing for this service:
+
+```yaml
+services:
+  myapp:
+    image: myapp:latest
+    x-runtipi:
+      is_main: true
+      internal_port: 80
+
+x-runtipi:
+  schema_version: 2
+```
+
+### Add volumes
+
+Persist app data using standard Docker Compose volume syntax. Use `${APP_DATA_DIR}` for app-specific storage:
+
+```yaml
+services:
+  myapp:
+    image: myapp:latest
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+    x-runtipi:
+      is_main: true
+      internal_port: 80
+
+x-runtipi:
+  schema_version: 2
+```
+
+### Add environment variables
+
+Use standard Docker Compose environment variable syntax. You can reference variables from the app's `config.json` form fields:
+
+```yaml
+services:
+  myapp:
+    image: myapp:latest
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+    environment:
+      - FOO=bar
+      - PASSWORD=${MYAPP_PASSWORD}
+    x-runtipi:
+      is_main: true
+      internal_port: 80
+
+x-runtipi:
+  schema_version: 2
+```
+
+### Add extra ports
+
+For additional ports beyond the main web UI port (which Traefik handles), expose them directly:
+
+```yaml
+services:
+  myapp:
+    image: myapp:latest
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+    environment:
+      - FOO=bar
+      - PASSWORD=${MYAPP_PASSWORD}
+    ports:
+      - "8080:8080/tcp"
+      - "25565:25565/udp"
+    x-runtipi:
+      is_main: true
+      internal_port: 80
+
+x-runtipi:
+  schema_version: 2
+```
+
+### Add a healthcheck
+
+Add container health monitoring using standard Docker Compose syntax:
+
+```yaml
+services:
+  myapp:
+    image: myapp:latest
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+    environment:
+      - FOO=bar
+      - PASSWORD=${MYAPP_PASSWORD}
+    ports:
+      - "8080:8080/tcp"
+      - "25565:25565/udp"
+    healthcheck:
+      test: curl --fail http://localhost || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    x-runtipi:
+      is_main: true
+      internal_port: 80
+
+x-runtipi:
+  schema_version: 2
+```
+
+### Add dependencies
+
+If your app needs other services (like a database), add them and use `depends_on`:
+
+```yaml
+services:
+  myapp:
+    image: myapp:latest
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+    environment:
+      - FOO=bar
+      - PASSWORD=${MYAPP_PASSWORD}
+      - DATABASE_URL=postgresql://postgres:${MYAPP_DB_PASS}@myapp-db:5432/myapp
+    ports:
+      - "8080:8080/tcp"
+    healthcheck:
+      test: curl --fail http://localhost || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      myapp-db:
+        condition: service_healthy
+    x-runtipi:
+      is_main: true
+      internal_port: 80
+
+  myapp-db:
+    image: postgres:16
+    volumes:
+      - ${APP_DATA_DIR}/db:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_PASSWORD=${MYAPP_DB_PASS}
+    healthcheck:
+      test: pg_isready -U postgres
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+x-runtipi:
+  schema_version: 2
+```
+
+### Additional options
+
+Since this is standard Docker Compose, you can use any Docker Compose option: `command`, `entrypoint`, `network_mode`, `cap_add`, `deploy`, `logging`, `devices`, and more. See the [Dynamic Compose Reference](/docs/reference/dynamic-compose) for Runtipi-specific options and the [Docker Compose documentation](https://docs.docker.com/reference/compose-file/) for all available options.
+
+</Steps>
+
+<Callout type="info">
+  For a complete reference of all `x-runtipi` metadata options and architecture
+  overrides, see the [Dynamic Compose
+  Reference](/docs/reference/dynamic-compose).
+</Callout>
+
+---
+
+## Legacy JSON Format
+
+<Callout type="warning">
+  The section below covers the legacy `docker-compose.json` format. This format
+  is still supported for backward compatibility, but **new apps should use
+  `docker-compose.yml`** with `x-runtipi` metadata as shown above.
+</Callout>
+
+The legacy format uses a custom JSON structure. Here is the same Nginx example in JSON:
+
+```json
+{
+  "schemaVersion": 2,
+  "services": [
+    {
+      "name": "nginx",
+      "image": "nginx",
+      "internalPort": 80,
+      "isMain": true
+    }
+  ]
+}
+```
+
+### Migrating from Schema v1 to v2
+
+Schema version 2 introduces important structural changes to improve consistency and type safety. Here are the key differences:
+
+#### Required `schemaVersion` field
+
+All dynamic compose files must now include the `schemaVersion` field set to `2`:
+
+```json
+{
+  "schemaVersion": 2,
+  "services": [...]
+}
+```
+
+#### Environment variables structure change
+
+**v1 format (object):**
+
+```json
+{
+  "environment": {
+    "FOO": "bar",
+    "PASSWORD": "${MYAPP_PASSWORD}"
+  }
+}
+```
+
+**v2 format (array of key-value pairs):**
+
+```json
+{
+  "environment": [
+    {
+      "key": "FOO",
+      "value": "bar"
+    },
+    {
+      "key": "PASSWORD",
+      "value": "${MYAPP_PASSWORD}"
+    }
+  ]
+}
+```
+
+#### Automatic migration
+
+Runtipi automatically migrates v1 schemas to v2 format when loading apps. However, it's recommended to update your `docker-compose.json` files manually to take advantage of the improved validation and error messages.
+
+### Legacy JSON Validator
+
+You can validate legacy JSON configurations using the validator below:
+
+<JsonSchemaValidator
+  schema={toJsonSchema(dynamicComposeSchema)}
+  placeholder="Paste your legacy docker-compose.json configuration here to validate it..."
+/>
+
+### Docker Compose to Legacy JSON Converter
+
+Converting an existing `docker-compose.yml` file to the legacy JSON format:
+
+<DockerComposeConverter placeholder="Paste your docker-compose.yml content here to convert it to the legacy JSON format..." />
+
+<Callout type="warning">
+  The converter works for most cases, but please review the converted
+  configuration to ensure it meets your needs. Some advanced features may not be
+  fully supported.
+</Callout>
+
+<Cards>
+  <Cards.Card
+    icon={<BookOpenIcon />}
+    title="Dynamic Compose Reference"
+    href="/docs/reference/dynamic-compose"
+  />
+  <Cards.Card
+    icon={<CodeBracketIcon />}
+    title="Config.json Reference"
+    href="/docs/reference/config-json"
+  />
+  <Cards.Card
+    icon={<PlusCircleIcon />}
+    title="Create Your Own App Store"
+    href="/docs/guides/create-your-own-app-store"
+  />
+</Cards>

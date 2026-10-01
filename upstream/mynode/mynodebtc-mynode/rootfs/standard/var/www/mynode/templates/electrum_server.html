@@ -1,0 +1,154 @@
+<!DOCTYPE html lang="en">
+    <head>
+        <title>{{ title }}</title>
+        {% include 'includes/head.html' %}
+     </head>
+
+    <body>
+        {% include 'includes/logo_header.html' %}
+        <div class="mynode_top_left_div">
+            <a href="/"><img class="mynode_nav_icon" src="{{ url_for('static', filename="images/home.png")}}"/></a>
+        </div>
+
+        <div class="main_header">Electrum Server Status</div>
+
+        {% include 'includes/message_display.html' %}
+
+        <br/>
+
+        <div class="app_tile_row">
+            <div class="info_tile">
+                <div class="info_tile_header">Status</div>
+                <div class="info_tile_contents">
+                    <table class="info_table">
+                        <tr>
+                            <th>Status</th>
+                            <td>{{status}}</td>
+                        </tr>
+                        <tr>
+                            <th>Current Block</th>
+                            <td>{{current_block}}</td>
+                        </tr>
+                        <tr>
+                            <th>Size</th>
+                            <td>{{db_size}}</td>
+                        </tr>
+                        <tr>
+                            <th>Actions</th>
+                            <td><a class="ui-button ui-widget ui-corner-all mynode_button_small" style="width: 100px;" href="/restart-electrs">Restart</a></td>
+                        </tr>
+                        <!--
+                        <tr>
+                            <th>CLI Command</th>
+                            <td>{{electrs_command}}</td>
+                        </tr>
+                        -->
+                    </table>
+                </div>
+            </div>
+
+            <div class="info_tile">
+                <div class="info_tile_header">Info</div>
+                <div class="info_tile_contents">
+                    <table class="info_table">
+                        <tr>
+                            <th>Version</th>
+                            <td>{{electrs_version}}</td>
+                        </tr>
+                        <tr>
+                            <th>Electrum Server IP</th>
+                            <td>{{server_ip}}</td>
+                        </tr>
+                        <tr>
+                            <th>Standard Port</th>
+                            <td>{{server_standard_port}}</td>
+                        </tr>
+                        <tr>
+                            <th>Secure Port</th>
+                            <td>{{server_secure_port}}</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="app_tile_row">
+            <div class="info_tile">
+                <div class="info_tile_header">Electrum Tor Service</div>
+                <div class="info_tile_contents">
+                    {% if product_key_skipped %}
+                        Premium Feature
+                    {% elif not is_tor_remote_access_enabled %}
+                        Tor Remote Access Disabled
+                    {% else %}
+                    <table class="info_table">
+                        <tr>
+                            <th>Hostname</th>
+                            <td style="font-size: 12px;">{{electrs_onion_hostname}}</td>
+                        </tr>
+                        <tr>
+                            <th>CLI Command</th>
+                            <td style="font-size: 12px;">{{electrs_onion_command}}</td>
+                        </tr>
+                        <tr>
+                            <th>Tor Help</th>
+                            <td><a href="http://docs.electrum.org/en/latest/tor.html" target="_blank">Link</a></td>
+                        </tr>
+                    </table>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+
+        <br/><br/>
+        <div class="main_header">Using Electrum Wallets</div>
+        <div class="main_header_sub_text">
+            You can use your MyNode to serve your mobile and PC-based Electrum clients securely and remotely!
+        </div>
+        <div class="app_tile_row">
+            <div class="app_tile_short">
+                <div class="app_status_icon"></div>
+                <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/app_icons/electrs.png")}}"/></div>
+                <div class="app_title">Local<br/>PC Wallet</div>
+                <div class="app_status"></div>
+                <div class="app_contents">
+                        <a class="ui-button ui-widget ui-corner-all mynode_button" href="https://docs.mynodebtc.com/electrum/electrum.html" target="_blank">Guide</a>
+                </div>
+            </div>
+
+            <div class="app_tile_short">
+                <div class="app_status_icon"></div>
+                <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/app_icons/electrs.png")}}"/></div>
+                <div class="app_title">Local<br/>Mobile Wallets</div>
+                <div class="app_status"></div>
+                <div class="app_contents">
+                    <a class="ui-button ui-widget ui-corner-all mynode_button" href="https://docs.mynodebtc.com/electrum/electrum.html" target="_blank">Guide</a>
+                </div>
+            </div>
+
+            <div class="app_tile_short">
+                <div class="app_status_icon"></div>
+                <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/app_icons/tor.png")}}"/></div>
+                <div class="app_title">Remote<br/>PC Wallet</div>
+                <div class="app_status"></div>
+                <div class="app_contents">
+                    <a class="ui-button ui-widget ui-corner-all mynode_button" href="https://docs.mynodebtc.com/tor/electrum.html" target="_blank">Guide</a>
+                </div>
+            </div>
+
+            <div class="app_tile_short">
+                <div class="app_status_icon"></div>
+                <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/app_icons/tor.png")}}"/></div>
+                <div class="app_title">Remote<br/>Mobile Wallet</div>
+                <div class="app_status"></div>
+                <div class="app_contents">
+                    <a class="ui-button ui-widget ui-corner-all mynode_button" href="https://docs.mynodebtc.com/tor/electrum.html" target="_blank">Guide</a>
+                </div>
+            </div>
+
+        </div>
+
+        {% include 'includes/footer.html' %}
+     </body>
+</html>
