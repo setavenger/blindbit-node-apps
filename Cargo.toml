@@ -1,0 +1,14 @@
+[workspace]
+resolver = "3"
+members = ["friglet-ui"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.89"
+license = "MIT"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = "debuginfo"

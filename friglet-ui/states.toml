@@ -1,0 +1,246 @@
+# friglet-ui state catalog: the one list of states the status page, the Umbrel widget, the
+# StartOS "Scan" health check and docs/troubleshooting.md are rendered from.
+#
+# Fields per state:
+#   severity  ok | info | warn | error       (UI colour; `friglet-ui status` exits 1 on warn/error)
+#   class     progress | setup | transient | permanent
+#             transient: friglet-ui retries by itself (backoff, next retry time shown)
+#             permanent: no automatic retry until the user acts or the configuration changes
+#   headline  one line, plain words
+#   detail    one or two sentences: what is happening and what to do
+#   action    label, kind (link | post | none), target (UI route or API path)
+#   widget    text for the Umbrel widget (error states read "Needs attention")
+#   health    ok | starting | attention (StartOS health check; `friglet-ui health` exits 0 only for ok)
+#   cause     evidence friglet-ui uses to pick this state
+#   fix       what the user does, per platform where it differs
+#   anchor    docs/troubleshooting.md anchor
+#   browser   true when only the web UI produces this state
+
+[needs-setup]
+severity = "info"
+class = "setup"
+headline = "Set up your wallet"
+detail = "Paste the Silent Payments descriptor from Sparrow and the wallet's birthday height to start scanning."
+action = { label = "Set up", kind = "link", target = "/setup" }
+widget = "Set up"
+health = "attention"
+cause = "No wallet is configured in the data directory."
+fix = "Open the web interface and complete setup (StartOS: run the Set up wallet action)."
+anchor = "needs-setup"
+
+[starting]
+severity = "info"
+class = "progress"
+headline = "Starting friglet"
+detail = "friglet is starting and connecting to the oracle and your node."
+action = { label = "", kind = "none", target = "" }
+widget = "Starting"
+health = "starting"
+cause = "friglet was started and its control socket has not answered yet."
+fix = "Wait. If this lasts more than a few minutes, open Diagnostics."
+anchor = "starting"
+
+[verifying-identity]
+severity = "info"
+class = "progress"
+headline = "Checking the wallet"
+detail = "friglet-ui is comparing the address friglet scans for with the address from your descriptor. Electrum stays closed until they match."
+action = { label = "", kind = "none", target = "" }
+widget = "Starting"
+health = "starting"
+cause = "friglet runs but has not reported a Silent Payments address that was checked yet."
+fix = "Wait. If friglet reports no address within 5 minutes, open Diagnostics."
+anchor = "verifying-identity"
+
+[identity-mismatch]
+severity = "error"
+class = "permanent"
+headline = "friglet is scanning a different wallet"
+detail = "The address friglet reports is not the address of the descriptor you entered, so friglet was stopped and Electrum stays closed. Enter the descriptor again or start fresh."
+action = { label = "Change wallet", kind = "link", target = "/wallet" }
+widget = "Needs attention"
+health = "attention"
+cause = "GetStatus.sp_address differs from the address derived from config.toml and scan.key (usually a state file made with another key)."
+fix = "Re-enter the descriptor, restore the previous wallet, or forget the wallet and set it up again."
+anchor = "identity-mismatch"
+
+[scanning]
+severity = "ok"
+class = "progress"
+headline = "Scanning"
+detail = "friglet is scanning blocks for your payments. Sparrow already sees payments up to the scanned block; more appear as scanning continues."
+action = { label = "Connect a wallet", kind = "link", target = "/connect" }
+widget = "Scanning"
+health = "ok"
+cause = "Identity verified, scan task running, scanned height below the tip."
+fix = "Nothing to do."
+anchor = "scanning"
+
+[up-to-date]
+severity = "ok"
+class = "progress"
+headline = "Caught up with your node"
+detail = "Every block from your birthday to your node's tip has been scanned. New blocks are scanned as they arrive."
+action = { label = "Connect a wallet", kind = "link", target = "/connect" }
+widget = "Up to date"
+health = "ok"
+cause = "Identity verified, scan task running, scanned height at min(node tip, oracle tip) and at or above the birthday."
+fix = "Nothing to do."
+anchor = "up-to-date"
+
+[scan-stopped]
+severity = "warn"
+class = "transient"
+headline = "Scanning stopped, restarting it"
+detail = "friglet's scan task ended with an error while friglet kept running. friglet-ui restarts the scan automatically."
+action = { label = "Retry now", kind = "post", target = "/api/scan/resume" }
+widget = "Needs attention"
+health = "attention"
+cause = "GetStatus: scanning=false with last_error set, and the user did not pause."
+fix = "Usually none: the scan restarts with backoff. If it keeps stopping, open Diagnostics."
+anchor = "scan-stopped"
+
+[paused]
+severity = "info"
+class = "progress"
+headline = "Scanning paused"
+detail = "You paused scanning. Electrum still serves what was found so far."
+action = { label = "Resume scanning", kind = "post", target = "/api/scan/resume" }
+widget = "Paused"
+health = "attention"
+cause = "The user paused scanning (friglet Stop)."
+fix = "Resume scanning."
+anchor = "paused"
+
+[oracle-unreachable]
+severity = "warn"
+class = "transient"
+headline = "Cannot reach the oracle"
+detail = "friglet could not connect to the BlindBit oracle, a third-party service it needs for block filters. friglet-ui keeps retrying."
+action = { label = "Retry now", kind = "post", target = "/api/scan/resume" }
+widget = "Needs attention"
+health = "attention"
+cause = "friglet exited at startup with an oracle transport error, or GetStatus reports the oracle unreachable."
+fix = "Check the box's internet connection; the oracle URL is shown on the status page."
+anchor = "oracle-unreachable"
+
+[oracle-dropped-resuming]
+severity = "warn"
+class = "transient"
+headline = "Oracle connection dropped, resuming"
+detail = "The connection to the oracle broke during a scan. friglet is restarted and resumes from the last saved block."
+action = { label = "", kind = "none", target = "" }
+widget = "Needs attention"
+health = "attention"
+cause = "friglet aborted (exit 134) or its scan task ended with a gRPC stream error."
+fix = "Usually none. Frequent drops point at an unstable internet connection."
+anchor = "oracle-dropped-resuming"
+
+[peer-unreachable]
+severity = "warn"
+class = "transient"
+headline = "Cannot reach your Bitcoin node"
+detail = "friglet-ui could not complete a P2P handshake with your node. It re-resolves the node address and retries."
+action = { label = "Retry now", kind = "post", target = "/api/scan/resume" }
+widget = "Needs attention"
+health = "attention"
+cause = "Resolving FRIGLET_UI_NODE failed, the TCP connection was refused or timed out, or friglet reported a P2P connection error."
+fix = "Check that the Bitcoin node app runs. Compose: check FRIGLET_UI_NODE."
+anchor = "peer-unreachable"
+
+[node-pruned]
+severity = "error"
+class = "permanent"
+headline = "Your node is pruned"
+detail = "friglet downloads old blocks from your node, and a pruned node has deleted them. friglet needs an unpruned node."
+action = { label = "Retry", kind = "post", target = "/api/scan/resume" }
+widget = "Needs attention"
+health = "attention"
+cause = "The node's version message has NODE_NETWORK_LIMITED without NODE_NETWORK."
+fix = "Switch pruning off in your Bitcoin node settings (StartOS: prune=0; RaspiBlitz and myNode: remove prune= from bitcoin.conf) and let it resync."
+anchor = "node-pruned"
+
+[node-syncing]
+severity = "warn"
+class = "transient"
+headline = "Your node is still syncing"
+detail = "Your node is behind the oracle, so friglet can only scan up to your node's height. Scanning continues as your node catches up."
+action = { label = "", kind = "none", target = "" }
+widget = "Needs attention"
+health = "attention"
+cause = "Node tip from the handshake is below the oracle tip, or below the block friglet asked for."
+fix = "Wait for the node to finish syncing."
+anchor = "node-syncing"
+
+[port-in-use]
+severity = "error"
+class = "permanent"
+headline = "A port friglet needs is taken"
+detail = "Another program already uses one of friglet's ports, so friglet cannot start."
+action = { label = "Retry", kind = "post", target = "/api/scan/resume" }
+widget = "Needs attention"
+health = "attention"
+cause = "friglet failed to bind 127.0.0.1:50001 (Electrum), 127.0.0.1:8095 (HTTP) or its control socket, or friglet-ui failed to bind an Electrum listener."
+fix = "Stop the other program or change its port, then retry."
+anchor = "port-in-use"
+
+[rescanning-after-reset]
+severity = "info"
+class = "progress"
+headline = "Rescanning after a reset"
+detail = "friglet's scanned height went backwards, so it is scanning those blocks again. Payments found before reappear as it catches up."
+action = { label = "", kind = "none", target = "" }
+widget = "Scanning"
+health = "ok"
+cause = "Scanned height fell below the highest height seen for this wallet."
+fix = "Nothing to do."
+anchor = "rescanning-after-reset"
+
+[crash-loop]
+severity = "error"
+class = "transient"
+headline = "friglet keeps stopping"
+detail = "friglet stopped several times in a few minutes. friglet-ui keeps restarting it with longer pauses."
+action = { label = "Retry now", kind = "post", target = "/api/scan/resume" }
+widget = "Needs attention"
+health = "attention"
+cause = "Five or more unexpected exits within ten minutes."
+fix = "Open Diagnostics; the restart history and the last error are listed there."
+anchor = "crash-loop"
+
+[unknown-exit]
+severity = "warn"
+class = "transient"
+headline = "friglet stopped unexpectedly"
+detail = "friglet exited for a reason friglet-ui does not recognise. It is restarted automatically."
+action = { label = "Retry now", kind = "post", target = "/api/scan/resume" }
+widget = "Needs attention"
+health = "attention"
+cause = "Any exit not matched by another state."
+fix = "Usually none. If it repeats, open Diagnostics."
+anchor = "unknown-exit"
+
+[ui-disconnected]
+severity = "warn"
+class = "transient"
+headline = "Lost connection to friglet-ui"
+detail = "The page cannot reach friglet-ui. It retries every few seconds."
+action = { label = "", kind = "none", target = "" }
+widget = "Needs attention"
+health = "attention"
+cause = "The browser's GET /api/state failed."
+fix = "Check that the app is running."
+anchor = "ui-disconnected"
+browser = true
+
+[unsupported-network]
+severity = "error"
+class = "permanent"
+headline = "This network is not supported"
+detail = "friglet scans bitcoin (mainnet), signet, testnet4 and regtest. This node runs another network, so friglet is not started."
+action = { label = "", kind = "none", target = "" }
+widget = "Needs attention"
+health = "attention"
+cause = "FRIGLET_UI_NETWORK is missing or not one of bitcoin, signet, testnet4, regtest (Umbrel passes testnet for testnet3)."
+fix = "Switch the Bitcoin node to a supported network, or uninstall friglet."
+anchor = "unsupported-network"
