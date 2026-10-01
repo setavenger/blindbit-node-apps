@@ -26,7 +26,7 @@ trap 'rm -rf "$stage"' EXIT
 for a in amd64 arm64; do
   name="friglet-node-$version-linux-$a"
   d="$stage/$name"
-  mkdir -p "$d"
+  mkdir -m 0755 "$d"
   install -m 0755 "$OUT/bin/linux-$a/friglet" "$OUT/bin/linux-$a/friglet-ui" "$d/"
   install -m 0644 "$OUT/bin/linux-$a/LICENSE.friglet" "$OUT/BUILDINFO" "$d/"
   if [ -f "$ROOT/LICENSE" ]; then install -m 0644 "$ROOT/LICENSE" "$d/LICENSE"; fi
