@@ -1,0 +1,7 @@
+# The exact toolchain version is pinned in versions.env once the maintainer settles it; until
+# then builds use the current stable channel with rustfmt and clippy. MSRV: rust-version in
+# Cargo.toml (1.89: std file locking; blindbit-rs needs 1.88).
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

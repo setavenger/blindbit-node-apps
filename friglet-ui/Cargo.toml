@@ -1,0 +1,45 @@
+[package]
+name = "friglet-ui"
+version = "0.1.0"
+description = "Setup, supervision, status and Electrum front for the friglet Silent Payments daemon on node boxes"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+build = "build.rs"
+
+[[bin]]
+name = "friglet-ui"
+path = "src/main.rs"
+
+[dependencies]
+# Control-socket protocol of friglet, at the friglet pin (BLINDBIT_RS_REV in versions.env;
+# a unit test fails when the two differ).
+friglet-ipc = { git = "https://github.com/setavenger/blindbit-rs.git", rev = "93f6a92805b97921087b43e626ce4d3d766a3c36" }
+
+anyhow = "1"
+argon2 = { version = "0.5", features = ["std"] }
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio", "query"] }
+bech32 = "0.11"
+bitcoin = { version = "0.32", default-features = false, features = ["std", "secp-recovery"] }
+clap = { version = "4.5", features = ["derive", "env"] }
+hex = "0.4"
+libc = "0.2"
+rand = "0.8"
+regex = "1"
+rcgen = { version = "0.13", default-features = false, features = ["crypto", "pem", "ring"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+time = { version = "0.3", features = ["formatting", "parsing"] }
+tokio = { version = "1.48", features = ["full"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12", "logging"] }
+tokio-util = "0.7"
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+[dev-dependencies]
+# friglet's own address derivation (bdk_sp at the rev friglet's Cargo.lock pins), used to
+# check that friglet-ui derives the same `sp_address` string friglet reports.
+bdk_sp = { git = "https://github.com/setavenger/bdk-sp", rev = "783c63c9b59fcbfeb008ff2266913a30cd75c132" }
+tempfile = "3"
