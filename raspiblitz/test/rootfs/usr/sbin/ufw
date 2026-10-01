@@ -1,0 +1,46 @@
+#!/bin/bash
+# TEST STUB of ufw: keeps "allow from <range> to any port <port> proto tcp" rules in a file,
+# because a container without NET_ADMIN cannot run the real firewall.
+db=/var/lib/ufw-stub/rules
+mkdir -p "${db%/*}"
+touch "${db}"
+echo "ufw $*" >> /var/lib/ufw-stub/calls
+
+delete=0
+if [ "$1" = "delete" ]; then
+  delete=1
+  shift
+fi
+if [ "$1" != "allow" ]; then
+  echo "stub ufw: unsupported: $*" >&2
+  exit 1
+fi
+shift
+from="any"; port=""; proto="any"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    from) from="$2"; shift 2 ;;
+    to) shift 2 ;;
+    port) port="$2"; shift 2 ;;
+    proto) proto="$2"; shift 2 ;;
+    comment) shift 2 ;;
+    *) port="$1"; shift ;;
+  esac
+done
+rule="${from} ${port} ${proto}"
+if [ ${delete} -eq 1 ]; then
+  if grep -qxF "${rule}" "${db}"; then
+    grep -vxF "${rule}" "${db}" > "${db}.new"
+    mv "${db}.new" "${db}"
+    echo "Rule deleted"
+  else
+    echo "Could not delete non-existent rule"
+  fi
+else
+  if grep -qxF "${rule}" "${db}"; then
+    echo "Skipping adding existing rule"
+  else
+    echo "${rule}" >> "${db}"
+    echo "Rule added"
+  fi
+fi

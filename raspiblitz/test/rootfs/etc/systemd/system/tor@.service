@@ -1,0 +1,10 @@
+# TEST STUB unit: fake Tor instance for tor.onion-service.sh
+[Unit]
+Description=fake tor %i (test stub)
+
+[Service]
+ExecStart=/bin/sleep infinity
+ExecReload=/usr/local/bin/fake-tor-reload
+
+[Install]
+WantedBy=multi-user.target

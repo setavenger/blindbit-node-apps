@@ -1,0 +1,250 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: setavenger <github@snblago.com>
+Date: Thu, 1 Oct 2026 14:36:25 +0000
+Subject: [PATCH 1/2] friglet: hook the bonus script into menus, provisioning
+ and system scripts
+
+bonus.friglet.sh installs friglet (BlindBit Silent Payments scanner with an
+Electrum server for one wallet) from a pinned, checksummed release tarball.
+This wires it in like the other bonus apps:
+
+- _provision_.sh: re-run 'on' after an SD card update or recovery
+- 00settingsMenuServices.sh: on/off in SERVICES (asks whether to keep data)
+- 00mainMenu.sh, 99connectMenu.sh: open the friglet SSH menu
+- 99updateMenu.sh: install the version pinned in the script
+- 00infoBlitz.sh: scan progress line until friglet is up to date
+- blitz.debug.sh: unit and script status only; journal lines are left out
+  because friglet logs wallet txids and amounts
+- blitz.shutdown.sh: stop friglet cleanly before power off
+- tor.network.sh: recreate the onion service when Tor is switched on
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ home.admin/00infoBlitz.sh                   |  9 ++++++
+ home.admin/00mainMenu.sh                    |  6 ++++
+ home.admin/00settingsMenuServices.sh        | 33 +++++++++++++++++++++
+ home.admin/99connectMenu.sh                 |  5 ++++
+ home.admin/99updateMenu.sh                  |  7 +++++
+ home.admin/_provision_.sh                   |  9 ++++++
+ home.admin/config.scripts/blitz.debug.sh    | 11 +++++++
+ home.admin/config.scripts/blitz.shutdown.sh |  2 +-
+ home.admin/config.scripts/tor.network.sh    |  1 +
+ 9 files changed, 82 insertions(+), 1 deletion(-)
+
+diff --git a/home.admin/00infoBlitz.sh b/home.admin/00infoBlitz.sh
+index 0681a4f3..e24f3fa0 100755
+--- a/home.admin/00infoBlitz.sh
++++ b/home.admin/00infoBlitz.sh
+@@ -386,6 +386,15 @@ else
+     fi
+   fi
+ 
++  # Silent Payments scanner - friglet
++  if [ "${friglet}" == "on" ]; then
++    infoSync=""
++    source <(/home/admin/config.scripts/bonus.friglet.sh status-sync 2>/dev/null)
++    if [ ${#infoSync} -gt 0 ]; then
++      appInfoLine="friglet: ${infoSync}"
++    fi
++  fi
++
+   # Transaction Index
+   source <(sudo /home/admin/config.scripts/network.txindex.sh status)
+   if [ "${txindex}" == "1" ] && [ "${isIndexed}" != "1" ]; then
+diff --git a/home.admin/00mainMenu.sh b/home.admin/00mainMenu.sh
+index b1401f4b..637867ea 100755
+--- a/home.admin/00mainMenu.sh
++++ b/home.admin/00mainMenu.sh
+@@ -95,6 +95,9 @@ fi
+ if [ "${fulcrum}" == "on" ]; then
+   OPTIONS+=(FULCRUM "Fulcrum Electrum Server")
+ fi
++if [ "${friglet}" == "on" ]; then
++  OPTIONS+=(FRIGLET "friglet Silent Payments Scanner")
++fi
+ if [ "${BTCRPCexplorer}" == "on" ]; then
+   OPTIONS+=(EXPLORE "BTC RPC Explorer")
+ fi
+@@ -280,6 +283,9 @@ case $CHOICE in
+         FULCRUM)
+             /home/admin/config.scripts/bonus.fulcrum.sh menu
+             ;;
++        FRIGLET)
++            /home/admin/config.scripts/bonus.friglet.sh menu
++            ;;
+         LIT)
+             /home/admin/config.scripts/bonus.lit.sh menu
+             ;;
+diff --git a/home.admin/00settingsMenuServices.sh b/home.admin/00settingsMenuServices.sh
+index 0c451e8a..23d4ed50 100755
+--- a/home.admin/00settingsMenuServices.sh
++++ b/home.admin/00settingsMenuServices.sh
+@@ -14,6 +14,7 @@ if [ ${#specter} -eq 0 ]; then specter="off"; fi
+ if [ ${#BTCPayServer} -eq 0 ]; then BTCPayServer="off"; fi
+ if [ ${#ElectRS} -eq 0 ]; then ElectRS="off"; fi
+ if [ ${#fulcrum} -eq 0 ]; then fulcrum="off"; fi
++if [ ${#friglet} -eq 0 ]; then friglet="off"; fi
+ if [ ${#lndmanage} -eq 0 ]; then lndmanage="off"; fi
+ if [ ${#joinmarket} -eq 0 ]; then joinmarket="off"; fi
+ if [ ${#jam} -eq 0 ]; then jam="off"; fi
+@@ -45,6 +46,7 @@ OPTIONS=()
+ if [ "${network}" == "bitcoin" ]; then
+   OPTIONS+=(ea 'BTC Electrum Rust Server' ${ElectRS})
+   OPTIONS+=(fu 'BTC Fulcrum Electrum Server' ${fulcrum})
++  OPTIONS+=(fg 'BTC friglet Silent Payments Scanner' "${friglet}")
+   OPTIONS+=(pa 'BTC PayServer' ${BTCPayServer})
+   OPTIONS+=(ba 'BTC RPC-Explorer' ${BTCRPCexplorer})
+   OPTIONS+=(sa 'BTC Specter Desktop' ${specter})
+@@ -306,6 +308,37 @@ else
+   echo "Fulcrum Setting unchanged."
+ fi
+ 
++# friglet process choice
++choice="off"; check=$(echo "${CHOICES}" | grep -c "fg")
++if [ "${check}" -eq 1 ]; then choice="on"; fi
++if [ "${friglet}" != "${choice}" ]; then
++  echo "friglet setting changed .."
++  anychange=1
++  if [ "${choice}" = "on" ]; then
++    if sudo -u admin /home/admin/config.scripts/bonus.friglet.sh on; then
++      sudo -u admin /home/admin/config.scripts/bonus.friglet.sh menu
++    else
++      echo "# friglet was not switched on - see the messages above."
++      echo "Press ENTER to continue."
++      read -r
++    fi
++  else
++    whiptail --title "Delete friglet data?" \
++      --yes-button "Keep Data" \
++      --no-button "Delete Data" \
++      --yesno "friglet is getting uninstalled. Keep its data (wallet setup, scan state, web UI password) to reuse it on a re-install? Deleting also removes the wallet's scan key from this node." 11 70
++    if [ $? -eq 1 ]; then
++      echo "# Uninstalling friglet AND DELETING DATA ..."
++      sudo -u admin /home/admin/config.scripts/bonus.friglet.sh off --delete-data
++    else
++      echo "# Uninstalling friglet but keeping data ..."
++      sudo -u admin /home/admin/config.scripts/bonus.friglet.sh off
++    fi
++  fi
++else
++  echo "friglet setting unchanged."
++fi
++
+ # BTCPayServer process choice
+ choice="off"; check=$(echo "${CHOICES}" | grep -c "pa")
+ if [ ${check} -eq 1 ]; then choice="on"; fi
+diff --git a/home.admin/99connectMenu.sh b/home.admin/99connectMenu.sh
+index e631fc5e..53c47a8c 100644
+--- a/home.admin/99connectMenu.sh
++++ b/home.admin/99connectMenu.sh
+@@ -20,6 +20,9 @@ OPTIONS+=(MOBILE "Connect Mobile Wallet")
+ if [ "${ElectRS}" == "on" ]; then
+   OPTIONS+=(ELECTRS "Electrum Rust Server")
+ fi
++if [ "${friglet}" == "on" ]; then
++  OPTIONS+=(FRIGLET "friglet Silent Payments (Electrum)")
++fi
+ if [ "${BTCPayServer}" == "on" ] && [ "${lnd}" = "on" ]; then
+   OPTIONS+=(BTCPAY-LND "Show LND connection string")
+ fi
+@@ -56,6 +59,8 @@ case $CHOICE in
+     /home/admin/97addMobileWallet.sh;;
+   ELECTRS)
+     /home/admin/config.scripts/bonus.electrs.sh menu;;
++  FRIGLET)
++    /home/admin/config.scripts/bonus.friglet.sh menu;;
+   BTCPAY-LND)
+     /home/admin/config.scripts/lnd.export.sh btcpay
+     echo "Press ENTER to return to main menu."
+diff --git a/home.admin/99updateMenu.sh b/home.admin/99updateMenu.sh
+index 7411f91e..ba412e1d 100755
+--- a/home.admin/99updateMenu.sh
++++ b/home.admin/99updateMenu.sh
+@@ -587,6 +587,10 @@ if [ "${fulcrum}" == "on" ]; then
+   OPTIONS+=(FULCRUM "Update Fulcrum")
+ fi
+ 
++if [ "${friglet}" == "on" ]; then
++  OPTIONS+=(FRIGLET "Update friglet")
++fi
++
+ if [ "${RTL}" == "on" ]||[ "${cRTL}" == "on" ]; then
+   OPTIONS+=(RTL "Update RTL")
+ fi
+@@ -661,6 +665,9 @@ case $CHOICE in
+   FULCRUM)
+     /home/admin/config.scripts/bonus.fulcrum.sh update
+     ;;
++  FRIGLET)
++    /home/admin/config.scripts/bonus.friglet.sh update
++    ;;
+   RTL)
+     /home/admin/config.scripts/bonus.rtl.sh update
+     ;;
+diff --git a/home.admin/_provision_.sh b/home.admin/_provision_.sh
+index c733f623..f6e79f37 100755
+--- a/home.admin/_provision_.sh
++++ b/home.admin/_provision_.sh
+@@ -437,6 +437,15 @@ else
+   echo "Provisioning Fulcrum - keep default" >> ${logFile}
+ fi
+ 
++#FRIGLET
++if [ "${friglet}" = "on" ]; then
++  echo "Provisioning friglet - run config script" >> ${logFile}
++  /home/admin/_cache.sh set message "Setup friglet"
++  sudo -u admin /home/admin/config.scripts/bonus.friglet.sh on >> ${logFile} 2>&1
++else
++  echo "Provisioning friglet - keep default" >> ${logFile}
++fi
++
+ # BTCPAYSERVER
+ if [ "${BTCPayServer}" = "on" ]; then
+ 
+diff --git a/home.admin/config.scripts/blitz.debug.sh b/home.admin/config.scripts/blitz.debug.sh
+index 5f601d80..485c5ebc 100755
+--- a/home.admin/config.scripts/blitz.debug.sh
++++ b/home.admin/config.scripts/blitz.debug.sh
+@@ -321,6 +321,17 @@ else
+   echo "- Electrum Rust Server is OFF by config"
+ fi
+ 
++if [ "${friglet}" == "on" ]; then
++  echo
++  echo "*** friglet Status ***"
++  echo "(friglet logs are left out: they contain wallet txids and amounts - see 'sudo journalctl -u friglet')"
++  sudo systemctl status friglet -n0 --no-pager
++  sudo /home/admin/config.scripts/bonus.friglet.sh status
++  echo
++else
++  echo "- friglet is OFF by config"
++fi
++
+ if [ "${lit}" == "on" ]; then
+   echo
+   echo "*** LAST 20 LIT LOGS ***"
+diff --git a/home.admin/config.scripts/blitz.shutdown.sh b/home.admin/config.scripts/blitz.shutdown.sh
+index 0984694c..3c1d7d32 100755
+--- a/home.admin/config.scripts/blitz.shutdown.sh
++++ b/home.admin/config.scripts/blitz.shutdown.sh
+@@ -42,7 +42,7 @@ echo "-----------------------------------------------"
+ sleep 3
+ 
+ # general services to stop
+-servicesToStop="electrs fulcrum elementsd"
++servicesToStop="electrs fulcrum friglet elementsd"
+ for service in ${servicesToStop}; do
+   if systemctl is-active --quiet ${service}; then
+     echo "stopping ${service} - please wait .."
+diff --git a/home.admin/config.scripts/tor.network.sh b/home.admin/config.scripts/tor.network.sh
+index 3fbadcf5..8e8cbf53 100755
+--- a/home.admin/config.scripts/tor.network.sh
++++ b/home.admin/config.scripts/tor.network.sh
+@@ -126,6 +126,7 @@ case "$1" in
+     [ "${rtlWebinterface}" = "on" ] && /home/admin/config.scripts/tor.onion-service.sh RTL 80 3002 443 3003
+     [ "${BTCPayServer}" = "on" ] && /home/admin/config.scripts/tor.onion-service.sh btcpay 80 23002 443 23003
+     [ "${ElectRS}" = "on" ] && /home/admin/config.scripts/tor.onion-service.sh electrs 50002 50002 50001 50001
++    [ "${friglet}" = "on" ] && /home/admin/config.scripts/bonus.friglet.sh on
+     [ "${LNBits}" = "on" ] && /home/admin/config.scripts/tor.onion-service.sh lnbits 80 5002 443 5003
+     [ "${thunderhub}" = "on" ] && /home/admin/config.scripts/tor.onion-service.sh thunderhub 80 3012 443 3013
+     [ "${specter}" = "on" ] && /home/admin/config.scripts/tor.onion-service.sh specter 443 25441

@@ -1,0 +1,11 @@
+# TEST STUB unit: fake bitcoind for the bonus.friglet.sh test
+[Unit]
+Description=fake bitcoind (test stub)
+
+[Service]
+User=bitcoin
+ExecStart=/usr/local/bin/fake-bitcoind
+Restart=no
+
+[Install]
+WantedBy=multi-user.target
