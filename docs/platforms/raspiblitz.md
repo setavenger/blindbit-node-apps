@@ -206,8 +206,8 @@ not done.
    - `RELEASE_BASE_URL` (marked `TODO(release-location)`)
    - `SHA256_ARM64`, `SHA256_AMD64`
    - `PGP_PUBKEY_URL`, `PGP_FINGERPRINT` (marked `TODO(signing-key)`)
-3. Once a fingerprint is set, install also requires a `VALIDSIG` by that key over `SHA256SUMS`,
-   and `SHA256SUMS` must list the tarball with the pinned hash.
+3. Once a fingerprint is set, install also requires a `VALIDSIG` over `SHA256SUMS` by that
+   key or one of its subkeys, and `SHA256SUMS` must list the tarball with the pinned hash.
 4. Run `raspiblitz/test/run.sh` and `raspiblitz/upstream-pr/check.sh`.
 
 ## Tests
@@ -229,6 +229,8 @@ Covered:
 
 - refusals: no pinned checksum, checksum mismatch, pruned node (3 forms with exact text),
   testnet3
+- the signature hook, with keys generated at run time: a good signature, another key, a
+  tampered `SHA256SUMS`, and a signed `SHA256SUMS` without the pinned hash
 - the first `on`: user, modes, unit environment, whitebind, a single bitcoind restart, the
   HTTPS proxy, ufw, onion, listeners
 - `status`: key=value only, nothing on stderr

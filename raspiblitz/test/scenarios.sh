@@ -90,6 +90,45 @@ check "mismatch is reported" logHas "REFUSED: checksum mismatch"
 check "no code unpacked on mismatch" test ! -e "/home/friglet/friglet-node-${v1}"
 check "no user created on mismatch" bash -c '! id friglet' 
 
+echo "## release signature hook (test keys generated now, never committed)"
+export GNUPGHOME
+GNUPGHOME=$(mktemp -d)
+gpg --batch --quiet --passphrase '' --quick-gen-key "friglet test release <release@test.invalid>" ed25519 sign 1d 2>/dev/null
+gpg --batch --quiet --passphrase '' --quick-gen-key "some other key <other@test.invalid>" ed25519 sign 1d 2>/dev/null
+fpr=$(gpg --with-colons --list-keys release@test.invalid | awk -F: '/^fpr:/ { print $10; exit }')
+other=$(gpg --with-colons --list-keys other@test.invalid | awk -F: '/^fpr:/ { print $10; exit }')
+rel=/srv/release/v1
+(cd "${rel}" && sha256sum "friglet-node-${v1}-linux-amd64.tar.gz" > SHA256SUMS)
+gpg --batch --yes --quiet -u "${fpr}" --armor --detach-sign -o "${rel}/SHA256SUMS.asc" "${rel}/SHA256SUMS"
+gpg --armor --export "${fpr}" > "${rel}/signer.asc"
+signed() { # name fingerprint
+  sed -e "s|^PGP_PUBKEY_URL=.*|PGP_PUBKEY_URL=\"file://${rel}/signer.asc\"|" \
+      -e "s|^PGP_FINGERPRINT=.*|PGP_FINGERPRINT=\"$2\"|" /opt/test/scripts/pinned > "/opt/test/scripts/$1"
+}
+signed signed "${fpr}"
+signed signed-other "${other}"
+use signed
+rb install; rc=$?
+check "signed release with the pinned key installs" test "${rc}" -eq 0
+check "good signature reported" logHas "OK good signature by ${fpr}"
+userdel -rf friglet >/dev/null 2>&1
+use signed-other
+rb install; rc=$?
+check "signature by an unpinned key refuses" bash -c "test ${rc} -ne 0 && grep -qF 'is not signed by ${other}' ${last}"
+check "nothing installed on a bad signature" bash -c '! id friglet'
+use signed
+echo "$(printf '%064d' 0)  friglet-node-${v1}-linux-amd64.tar.gz" > "${rel}/SHA256SUMS"
+rb install; rc=$?
+check "tampered SHA256SUMS refuses" bash -c "test ${rc} -ne 0 && grep -qF 'is not signed by' ${last}"
+(cd "${rel}" && sha256sum "friglet-node-${v2}-linux-amd64.tar.gz" 2>/dev/null; echo "$(printf '%064d' 0)  friglet-node-${v1}-linux-amd64.tar.gz") > "${rel}/SHA256SUMS"
+gpg --batch --yes --quiet -u "${fpr}" --armor --detach-sign -o "${rel}/SHA256SUMS.asc" "${rel}/SHA256SUMS"
+rb install; rc=$?
+check "signed SHA256SUMS without the pinned hash refuses" bash -c "test ${rc} -ne 0 && grep -qF 'does not list' ${last}"
+check "nothing installed when SHA256SUMS disagrees" bash -c '! id friglet'
+rm -f "${rel}/SHA256SUMS" "${rel}/SHA256SUMS.asc" "${rel}/signer.asc"
+rm -rf "${GNUPGHOME}"
+unset GNUPGHOME
+
 echo "## prune refusal"
 use pinned
 for setting in "prune=550" "main.prune=550" "[main]|prune=1"; do

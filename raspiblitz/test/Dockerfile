@@ -14,7 +14,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update -qq \
  && apt-get install -y -qq --no-install-recommends \
       sudo nginx-light openssl curl ca-certificates jq whiptail python3 iproute2 \
-      adduser procps util-linux bsdutils >/dev/null \
+      adduser procps util-linux bsdutils gnupg >/dev/null \
  && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 COPY systemctl3.py /usr/bin/systemctl3.py
