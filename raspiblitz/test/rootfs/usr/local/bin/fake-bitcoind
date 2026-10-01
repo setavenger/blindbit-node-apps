@@ -1,0 +1,35 @@
+#!/usr/bin/env python3
+"""TEST STUB of bitcoind: binds every mainnet whitebind found in bitcoin.conf and fails the way
+Bitcoin Core does when two whitebinds use the same address."""
+import re
+import signal
+import socket
+import sys
+import time
+
+CONF = "/mnt/hdd/app-data/bitcoin/bitcoin.conf"
+with open("/var/log/fake-bitcoind.starts", "a", encoding="utf-8") as log:
+    log.write(f"{time.time()}\n")
+
+ports = []
+with open(CONF, encoding="utf-8") as conf:
+    for line in conf:
+        m = re.match(r"^(?:main\.)?whitebind=(?:[a-z,]+@)?127\.0\.0\.1:(\d+)\s*$", line.strip())
+        if m:
+            ports.append(int(m.group(1)))
+
+socks = []
+for port in ports:
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.bind(("127.0.0.1", port))
+    except OSError:
+        print(f"Error: Unable to bind to 127.0.0.1:{port} on this computer. "
+              "Bitcoin Core is probably already running.", file=sys.stderr)
+        sys.exit(1)
+    s.listen()
+    socks.append(s)
+
+signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+while True:
+    signal.pause()

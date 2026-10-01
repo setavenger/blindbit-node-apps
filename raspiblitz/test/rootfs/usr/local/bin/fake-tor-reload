@@ -1,0 +1,13 @@
+#!/bin/bash
+# TEST STUB of a Tor reload: creates a hostname file for every HiddenServiceDir in the
+# RaspiBlitz services torrc, like Tor does when it publishes an onion service.
+services=/mnt/hdd/app-data/tor/torrc.d/services
+grep '^HiddenServiceDir ' "${services}" 2>/dev/null | while read -r _ dir; do
+  mkdir -p "${dir}"
+  if [ ! -s "${dir}/hostname" ]; then
+    printf '%s.onion\n' "$(printf '%s' "${dir}" | sha256sum | cut -c1-56)" > "${dir}/hostname"
+  fi
+  chown -R debian-tor:debian-tor "${dir}"
+  chmod 700 "${dir}"
+done
+exit 0

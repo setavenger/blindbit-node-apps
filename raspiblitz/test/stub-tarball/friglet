@@ -1,0 +1,4 @@
+#!/bin/sh
+# TEST STUB of friglet. It is not the real program; the bonus script test only needs it to exist
+# next to friglet-ui.
+echo "friglet 0.0.0-stub"

@@ -1,0 +1,8 @@
+#!/bin/sh
+# TEST SHIM: docker-systemctl-replacement reports system units only to root, while the real
+# systemctl lets every user query them. Forward non-root calls through sudo (admin has
+# passwordless sudo, as on RaspiBlitz).
+if [ "$(id -u)" -ne 0 ]; then
+  exec sudo -n /usr/bin/python3 /usr/bin/systemctl3.py "$@"
+fi
+exec /usr/bin/python3 /usr/bin/systemctl3.py "$@"
