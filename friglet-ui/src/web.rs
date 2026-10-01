@@ -147,7 +147,8 @@ pub fn origin_allowed(headers: &HeaderMap, allowed: &[String]) -> Result<(), &'s
         None
     };
     let Some(src) = source else { return Ok(()) };
-    if src == host {
+    // Same origin; a proxy that drops the port from Host still names the same host.
+    if src == host || (!host.contains(':') && host_part(&src) == host) {
         return Ok(());
     }
     let matches_entry = |entry: &String| {
@@ -807,6 +808,57 @@ mod tests {
         assert!(
             origin_allowed(&h(&[("origin", "http://umbrel.local")]), &none).is_err(),
             "Host is required"
+        );
+        // RaspiBlitz/myNode: nginx terminates TLS on 8098 and forwards Host with the port.
+        assert!(
+            origin_allowed(
+                &h(&[
+                    ("host", "192.168.1.5:8098"),
+                    ("origin", "https://192.168.1.5:8098")
+                ]),
+                &none
+            )
+            .is_ok()
+        );
+        assert!(
+            origin_allowed(
+                &h(&[
+                    ("host", "raspiblitz.local:8098"),
+                    ("origin", "https://raspiblitz.local:8098")
+                ]),
+                &none
+            )
+            .is_ok()
+        );
+        assert!(
+            origin_allowed(
+                &h(&[
+                    ("host", "abcdefghijklmnop.onion:8098"),
+                    ("origin", "https://abcdefghijklmnop.onion:8098")
+                ]),
+                &none
+            )
+            .is_ok()
+        );
+        assert!(
+            origin_allowed(
+                &h(&[
+                    ("host", "192.168.1.5"),
+                    ("origin", "https://192.168.1.5:8098")
+                ]),
+                &none
+            )
+            .is_ok()
+        );
+        assert!(
+            origin_allowed(
+                &h(&[
+                    ("host", "192.168.1.5:8098"),
+                    ("origin", "https://192.168.1.6:8098")
+                ]),
+                &none
+            )
+            .is_err()
         );
         // No Origin and no Referer: a non-browser client (CSRF token still required).
         assert!(origin_allowed(&h(&[("host", "127.0.0.1:8097")]), &none).is_ok());

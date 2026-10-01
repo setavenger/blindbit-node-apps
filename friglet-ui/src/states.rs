@@ -168,6 +168,81 @@ impl Catalog {
 }
 
 // ---------------------------------------------------------------------------------------------
+// docs/troubleshooting.md
+// ---------------------------------------------------------------------------------------------
+
+/// Refusals outside the state catalog whose texts cite a troubleshooting anchor:
+/// (anchor, title, cause, fix).
+pub const REFUSALS: [(&str, &str, &str, &str); 3] = [
+    (
+        "stray-friglet-variable",
+        "friglet-ui refuses to start: a FRIGLET_* variable is set",
+        "An environment variable starting with FRIGLET_ but not FRIGLET_UI_ is set. friglet-ui starts friglet with a cleared environment, so such a variable would silently do nothing (or, set by hand on friglet, override the managed configuration).",
+        "Remove the variable from the container or service environment; use the matching FRIGLET_UI_* setting (docs/contract.md).",
+    ),
+    (
+        "missing-ui-password",
+        "friglet-ui refuses to start: no UI password",
+        "FRIGLET_UI_AUTH=password (the default outside Umbrel) and no password hash is stored in the data directory yet.",
+        "Compose: set FRIGLET_UI_PASSWORD. Native installs and StartOS: write the password to the file named by FRIGLET_UI_PASSWORD_FILE (read on every start). Or run `friglet-ui password set` with the password on stdin.",
+    ),
+    (
+        "wallet-exists",
+        "Setup refused: a different wallet is already set up",
+        "`friglet-ui setup` (exit code 7) or POST /api/setup (409 wallet-exists) was given another descriptor or birthday than the configured wallet.",
+        "Confirm the replacement: `friglet-ui setup --replace`, or confirm the change in the web UI. The old wallet is kept in prev/ for 24 hours and can be restored.",
+    ),
+];
+
+/// Render docs/troubleshooting.md from the catalog (one `###` heading, hence one anchor,
+/// per state id and refusal).
+pub fn troubleshooting_markdown(c: &Catalog) -> String {
+    let mut out = String::new();
+    out.push_str("# Troubleshooting\n\n");
+    out.push_str(
+        "<!-- Generated from friglet-ui/states.toml by friglet-ui's tests. Do not edit by hand.\n     \
+         Regenerate: FRIGLET_UI_REGEN_DOCS=1 cargo test -p friglet-ui troubleshooting -->\n\n",
+    );
+    out.push_str(
+        "Every state the friglet status page, the Umbrel widget and the StartOS health check can show, \
+         with what friglet-ui saw and what to do. Anchors are the state ids (`#node-pruned`).\n\n",
+    );
+    out.push_str("| State | Severity | Retry | Widget |\n|---|---|---|---|\n");
+    for (id, d) in &c.entries {
+        let retry = match d.class.as_str() {
+            "transient" => "automatic",
+            "permanent" => "after you act",
+            _ => "-",
+        };
+        out.push_str(&format!(
+            "| [`{id}`](#{id}) | {} | {retry} | {} |\n",
+            d.severity, d.widget
+        ));
+    }
+    out.push_str("\n## States\n");
+    for (id, d) in &c.entries {
+        out.push_str(&format!("\n### {id}\n\n**{}**", d.headline));
+        if d.browser {
+            out.push_str(" (shown by the web page itself)");
+        }
+        out.push_str(&format!(
+            "\n\n{}\n\n- Severity: {} ({}).\n- How friglet-ui detects it: {}\n- Fix: {}\n",
+            d.detail, d.severity, d.class, d.cause, d.fix
+        ));
+        if d.action.kind != "none" && !d.action.label.is_empty() {
+            out.push_str(&format!("- Offered action: {}.\n", d.action.label));
+        }
+    }
+    out.push_str("\n## Refusals\n");
+    for (anchor, title, cause, fix) in REFUSALS {
+        out.push_str(&format!(
+            "\n### {anchor}\n\n**{title}**\n\n- Cause: {cause}\n- Fix: {fix}\n"
+        ));
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------------------------
 // Model
 // ---------------------------------------------------------------------------------------------
 
@@ -434,6 +509,49 @@ mod tests {
             assert!(f.is_permanent());
             assert_eq!(f.state(), id);
         }
+    }
+
+    /// docs/troubleshooting.md is generated from states.toml; this fails on drift.
+    /// Regenerate with `FRIGLET_UI_REGEN_DOCS=1 cargo test -p friglet-ui troubleshooting`.
+    #[test]
+    fn troubleshooting_doc_is_current() {
+        let path =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../docs/troubleshooting.md");
+        let generated = troubleshooting_markdown(&Catalog::load());
+        if std::env::var_os("FRIGLET_UI_REGEN_DOCS").is_some() {
+            std::fs::write(&path, &generated).unwrap();
+        }
+        let on_disk = std::fs::read_to_string(&path).unwrap_or_default();
+        assert!(
+            on_disk == generated,
+            "docs/troubleshooting.md is out of date; run FRIGLET_UI_REGEN_DOCS=1 cargo test -p friglet-ui troubleshooting"
+        );
+    }
+
+    /// Every `docs/troubleshooting.md#anchor` cited in friglet-ui's texts exists.
+    #[test]
+    fn troubleshooting_anchors_cited_in_code_exist() {
+        let doc = troubleshooting_markdown(&Catalog::load());
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut cited = 0;
+        for entry in std::fs::read_dir(src).unwrap() {
+            let text = std::fs::read_to_string(entry.unwrap().path()).unwrap();
+            for part in text.split("troubleshooting.md#").skip(1) {
+                let anchor: String = part
+                    .chars()
+                    .take_while(|c| c.is_ascii_lowercase() || *c == '-')
+                    .collect();
+                if anchor.is_empty() || anchor == "anchor" {
+                    continue;
+                }
+                cited += 1;
+                assert!(
+                    doc.contains(&format!("\n### {anchor}\n")),
+                    "missing anchor #{anchor}"
+                );
+            }
+        }
+        assert!(cited >= 4);
     }
 
     #[test]

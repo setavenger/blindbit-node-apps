@@ -36,6 +36,17 @@ pub const PASSWORD_FILE: &str = "ui-password.argon2";
 pub const TLS_CERT_FILE: &str = "electrum-tls.crt";
 pub const TLS_KEY_FILE: &str = "electrum-tls.key";
 
+/// Not wallet data: UI credentials, the Electrum TLS identity and friglet-ui's own
+/// bookkeeping. Reserved names that `forget`, wallet replacement and restore never touch.
+pub const RESERVED_UI_FILES: [&str; 6] = [
+    PASSWORD_FILE,
+    TLS_CERT_FILE,
+    TLS_KEY_FILE,
+    UI_STATE_FILE,
+    LOCK_FILE,
+    UI_SOCKET,
+];
+
 /// Files copied into `prev/` by a wallet change, and restored from it.
 pub const SNAPSHOT_FILES: [&str; 5] =
     [CONFIG_FILE, KEY_FILE, STATE_FILE, HEADERS_FILE, WALLET_FILE];
@@ -408,15 +419,21 @@ mod tests {
         write_atomic(&dd.prev().join(KEY_FILE), secret).unwrap();
         fs::create_dir(dd.prev_tmp()).unwrap();
         write_atomic(&dd.prev_tmp().join(STATE_FILE), secret).unwrap();
-        write_atomic(&dd.password(), b"$argon2id$...").unwrap();
-        write_atomic(&dd.path(TLS_KEY_FILE), b"tls key").unwrap();
+        for name in RESERVED_UI_FILES {
+            write_atomic(&dd.path(name), b"ui data").unwrap();
+        }
 
         assert!(!dir_contains(dd.root(), secret).unwrap().is_empty());
         let removed = dd.forget().unwrap();
         assert_eq!(removed.len(), 11);
         assert!(dir_contains(dd.root(), secret).unwrap().is_empty());
-        assert!(dd.password().exists(), "UI password survives forget");
-        assert!(dd.path(TLS_KEY_FILE).exists(), "TLS key survives forget");
+        for name in RESERVED_UI_FILES {
+            assert!(dd.path(name).exists(), "{name} survives forget");
+            assert!(
+                !SNAPSHOT_FILES.contains(&name),
+                "{name} is never snapshotted or restored"
+            );
+        }
         assert!(!dd.has_wallet());
     }
 }
