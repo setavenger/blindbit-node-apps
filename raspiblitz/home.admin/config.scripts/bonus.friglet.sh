@@ -205,19 +205,21 @@ verifySignature() { # downloadDir tarballName expectedSha256
   curl -fsSL -o "${dir}/SHA256SUMS" "${RELEASE_BASE_URL}/SHA256SUMS" || return 1
   curl -fsSL -o "${dir}/SHA256SUMS.asc" "${RELEASE_BASE_URL}/SHA256SUMS.asc" || return 1
   curl -fsSL -o "${dir}/signer.asc" "${PGP_PUBKEY_URL}" || return 1
-  local gnupg="${dir}/gnupg" status
+  local gnupg="${dir}/gnupg" status fpr
+  fpr=$(echo "${PGP_FINGERPRINT}" | tr -d ' ' | tr 'a-f' 'A-F')
   mkdir -m 700 "${gnupg}" || return 1
   gpg --homedir "${gnupg}" --batch --quiet --import "${dir}/signer.asc" 2>/dev/null || return 1
   status=$(LANG=C gpg --homedir "${gnupg}" --batch --status-fd 1 --verify "${dir}/SHA256SUMS.asc" "${dir}/SHA256SUMS" 2>/dev/null)
-  if ! echo "${status}" | grep -q "^\[GNUPG:\] VALIDSIG ${PGP_FINGERPRINT} "; then
-    echo "# FAIL: SHA256SUMS is not signed by ${PGP_FINGERPRINT}"
+  # VALIDSIG <signing key fpr> ... <primary key fpr>: accept the pinned key or its subkey
+  if ! echo "${status}" | awk -v f="${fpr}" '$1 == "[GNUPG:]" && $2 == "VALIDSIG" && ($3 == f || $NF == f) { ok = 1 } END { exit !ok }'; then
+    echo "# FAIL: SHA256SUMS is not signed by ${fpr}"
     return 1
   fi
   if ! grep -Eq "^${sha}[[:space:]]+\*?${tarball}\$" "${dir}/SHA256SUMS"; then
     echo "# FAIL: the signed SHA256SUMS does not list ${tarball} with the pinned checksum"
     return 1
   fi
-  echo "# OK good signature by ${PGP_FINGERPRINT}"
+  echo "# OK good signature by ${fpr}"
 }
 
 ensureUser() {
