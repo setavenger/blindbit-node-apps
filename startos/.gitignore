@@ -1,0 +1,6 @@
+# build outputs and local state (start-cli writes the signing key to .startos/)
+javascript/
+node_modules/
+ncc-cache/
+.startos/
+*.s9pk
