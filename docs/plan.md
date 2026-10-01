@@ -335,7 +335,7 @@ build `dev` in the UI and diagnostics.
 - Ports and paths (verified free only by grep of the pulled trees): Electrum 50031, TLS 50032
   (RaspiBlitz nginx stream), friglet HTTP `127.0.0.1:8095`, friglet-ui 8097 (container; loopback
   on native installs), RaspiBlitz and myNode HTTPS for friglet-ui 8098 through nginx, Umbrel
-  manifest port 2104, RaspiBlitz P2P whitebind `download@127.0.0.1:8336`; control socket, config,
+  manifest port 2104, RaspiBlitz P2P whitebind `download@127.0.0.1:8337` (8336 superseded: BTCPay uses it on RaspiBlitz); control socket, config,
   key and state files under the platform data dir (`/data` in the image). Each README carries the
   table for its platform.
 - Environment isolation: friglet-ui starts friglet with a cleared environment plus an allowlist
