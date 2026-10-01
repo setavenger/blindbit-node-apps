@@ -38,7 +38,7 @@ static RULES: LazyLock<Vec<Rule>> = LazyLock::new(|| {
         r(r"-?\b\d+(?:\.\d+)?\s?(?:BTC|btc|sats?|SAT)\b", "<amount>"),
         // Balance and value fields whatever their unit.
         r(
-            r"\b(total|confirmed|trusted_pending|untrusted_pending|balance|value|amount|fee)=(?:[^\s,]+(?: BTC| sats?)?)",
+            r"\b(balance|value|amount|fee)=(?:[^\s,]+(?: BTC| sats?)?)",
             "$1=<amount>",
         ),
         // IPv6, bracketed with port.
@@ -102,6 +102,7 @@ mod tests {
         for (line, expect) in cases {
             let r = redact(line);
             assert!(r.contains(expect), "{line}\n=> {r}");
+            assert!(!r.contains(" BTC"), "{r}");
             assert!(!r.contains("152.53.151.148"));
             assert!(!r.contains("0.00012345"));
             assert!(!r.contains("4f2a2d6b5c3e"));
@@ -129,6 +130,9 @@ mod tests {
     fn keeps_harmless_text() {
         let line = "2026-10-01T12:00:00.123456Z  INFO new blocks available, scanning from=270001 to=270050";
         assert_eq!(redact(line), line);
+        let line =
+            "2026-10-01T12:00:00Z  INFO scan progress height=324500 scanned=25 total=31 pct=80";
+        assert_eq!(redact(line), line, "block counts are not amounts");
         let line = "2026-10-01T12:00:00Z  INFO control socket listening path=/data/friglet.sock";
         assert_eq!(redact(line), line);
     }

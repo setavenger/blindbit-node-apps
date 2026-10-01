@@ -192,7 +192,7 @@ async fn run_daemon(data_dir: PathBuf, run: RunArgs) -> i32 {
         }
     };
     for sock in [dd.ui_socket(), dd.friglet_socket()] {
-        if sock.as_os_str().len() > 100 {
+        if sock.as_os_str().len() > 104 {
             eprintln!(
                 "friglet-ui: data directory path is too long for a Unix socket ({}); use a shorter FRIGLET_UI_DATA_DIR",
                 sock.display()

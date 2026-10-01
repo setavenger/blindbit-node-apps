@@ -190,6 +190,7 @@ pub struct Supervisor {
     state_checked: Option<Instant>,
     samples: VecDeque<(Instant, u64)>,
     last_state: Option<StateId>,
+    ui_saved_at: Option<Instant>,
 }
 
 fn exit_kind(status: &ExitStatus) -> ExitKind {
@@ -262,6 +263,7 @@ impl Supervisor {
             state_checked: None,
             samples: VecDeque::new(),
             last_state: None,
+            ui_saved_at: None,
         }
     }
 
@@ -756,8 +758,13 @@ impl Supervisor {
                     || self.ui.max_scanned.as_ref().map(|(a, _)| a) != Some(&addr)
                 {
                     self.ui.max_scanned = Some((addr, max));
-                    if max % 100 == 0 || max == scanned {
-                        // Persist occasionally; it only guards the rescan banner.
+                    // Persist at most once a minute (SD cards); it only feeds the rescan
+                    // banner across friglet-ui restarts.
+                    if self
+                        .ui_saved_at
+                        .is_none_or(|t| t.elapsed() > Duration::from_secs(60))
+                    {
+                        self.ui_saved_at = Some(now);
                         self.save_ui_state();
                     }
                 }
@@ -813,10 +820,13 @@ impl Supervisor {
         }
 
         // Persisted height, transaction commit, prev/ expiry.
-        if self
-            .state_checked
-            .is_none_or(|t| t.elapsed() > STATE_FILE_CHECK)
-        {
+        // Every 30 s; every poll while a wallet change waits for its first saved scan.
+        let every = if self.transaction.is_some() {
+            POLL_EVERY
+        } else {
+            STATE_FILE_CHECK
+        };
+        if self.state_checked.is_none_or(|t| t.elapsed() >= every) {
             self.state_checked = Some(now);
             self.check_state_file();
         }
@@ -1044,6 +1054,7 @@ impl Supervisor {
         self.scan_attempt = 0;
         self.next_scan_start = None;
         self.process = Process::Idle;
+        self.state_checked = None;
         self.ui.desired = Desired::Run;
         self.ui.max_scanned = None;
         self.ui.last_failure = None;
@@ -1088,7 +1099,10 @@ impl Supervisor {
             }
         };
         let kind = match plan {
-            SetupPlan::NoOp if self.transaction.is_none() => {
+            // Re-entering the same wallet after a mismatch starts it fresh.
+            SetupPlan::NoOp
+                if self.transaction.is_none() && self.identity != Identity::Mismatch =>
+            {
                 return Outcome::ok(
                     Some(self.current_state().as_str()),
                     Some(&identity),
