@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <meta name="referrer" content="same-origin">
+  <title>friglet</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="fonts/IBMPlexSans-Regular-Latin1.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" id="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="wrap header-bar">
+      <a class="brand" href="#/status" id="brand">friglet</a>
+      <nav aria-label="Main" id="nav" hidden>
+        <ul class="nav-list">
+          <li data-when="unconfigured"><a href="#/setup" data-route="setup">Setup</a></li>
+          <li data-when="configured"><a href="#/status" data-route="status">Status</a></li>
+          <li data-when="configured"><a href="#/connect" data-route="connect">Connect</a></li>
+          <li data-when="configured"><a href="#/wallet" data-route="wallet">Wallet</a></li>
+          <li><a href="#/diagnostics" data-route="diagnostics">Diagnostics</a></li>
+        </ul>
+      </nav>
+      <button type="button" class="button-quiet" id="logout" hidden>Sign out</button>
+    </div>
+  </header>
+
+  <main id="main" class="wrap" tabindex="-1">
+    <div class="banners">
+      <div class="banner banner-error" id="banner-disconnected" hidden>
+        <p><strong>Lost contact with this box.</strong>
+          <span id="banner-disconnected-text">The page keeps trying every 2 seconds and updates on its own.</span></p>
+      </div>
+      <div class="banner banner-warn" id="banner-auth-none" hidden>
+        <p><strong>No password protects this page.</strong>
+          <span id="banner-auth-none-text">Anyone who can open it can see and change the wallet. Put your own login in front of it, or set a password.</span></p>
+      </div>
+      <div class="banner banner-info" id="banner-platform" hidden>
+        <p id="banner-platform-text"></p>
+      </div>
+    </div>
+
+    <!-- Loading: shown only until the first answer from the box (never a spinner). -->
+    <section class="view" id="view-loading" aria-labelledby="loading-title">
+      <h1 id="loading-title" tabindex="-1">friglet</h1>
+      <p id="loading-text">Loading the status of this box…</p>
+    </section>
+
+    <!-- Login -->
+    <section class="view" id="view-login" aria-labelledby="login-title" hidden>
+      <h1 id="login-title" tabindex="-1">Sign in</h1>
+      <div class="stack" id="login-password-mode">
+        <p>Enter the friglet password for this box.</p>
+        <p class="hint" id="login-where"></p>
+        <form id="login-form" class="form" novalidate>
+          <div class="field">
+            <label for="login-password">Password</label>
+            <input id="login-password" name="password" type="password" autocomplete="current-password"
+                   autocapitalize="off" spellcheck="false" required>
+            <p class="field-error" id="login-password-error" hidden></p>
+          </div>
+          <p class="form-error" id="login-form-error" tabindex="-1" hidden></p>
+          <div class="actions">
+            <button type="submit" class="button-primary" id="login-submit">Sign in</button>
+          </div>
+        </form>
+      </div>
+      <div class="stack" id="login-gateway-mode" hidden>
+        <p>This page relies on your platform's login. Sign in on your platform's dashboard, then open friglet from there.</p>
+        <div class="actions">
+          <button type="button" class="button-secondary" id="login-retry">Check again</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Setup (first run only) -->
+    <section class="view" id="view-setup" aria-labelledby="setup-title" hidden>
+      <h1 id="setup-title" tabindex="-1">Set up your wallet</h1>
+
+      <div class="stack" id="setup-startos" hidden>
+        <p>On StartOS, the wallet is set up with a StartOS action, not on this page.</p>
+        <ol class="plain-steps">
+          <li>In StartOS, open <strong>Services</strong>, then <strong>friglet</strong>.</li>
+          <li>Open <strong>Actions</strong> and run the wallet setup action.</li>
+          <li>Paste the Silent Payments descriptor from Sparrow and the birthday height Sparrow shows for this wallet.</li>
+          <li>Start the service. This page then shows the wallet address and the scan.</li>
+        </ol>
+      </div>
+
+      <div class="stack" id="setup-web">
+        <p class="lede">Paste the Silent Payments descriptor from Sparrow and the wallet's birthday height.
+          friglet then scans this box's Bitcoin node for payments to that one wallet.</p>
+
+        <form id="setup-form" class="form" novalidate>
+          <div class="field">
+            <label for="setup-descriptor">Silent Payments descriptor</label>
+            <p class="hint" id="setup-descriptor-hint">Copy it from Sparrow. It starts with <span class="mono">sp(spscan1</span>. It is a secret: this page never shows it again after you save.</p>
+            <div class="input-row">
+              <input id="setup-descriptor" name="descriptor" type="password" class="mono"
+                     autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+                     data-1p-ignore data-lpignore="true" data-bwignore
+                     aria-describedby="setup-descriptor-hint">
+              <button type="button" class="button-secondary reveal" data-reveal="setup-descriptor" aria-label="Show descriptor">Show</button>
+            </div>
+            <p class="field-error" id="setup-descriptor-error" hidden></p>
+          </div>
+
+          <details class="disclosure" id="setup-hex">
+            <summary>Enter the keys as hex instead</summary>
+            <div class="disclosure-body">
+              <p class="hint" id="setup-hex-hint">Use this only if you cannot copy the descriptor, and leave the descriptor field empty.</p>
+              <div class="field">
+                <label for="setup-scan-secret">Scan secret key, 64 hex characters</label>
+                <div class="input-row">
+                  <input id="setup-scan-secret" name="scan_secret" type="password" class="mono"
+                         autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+                         data-1p-ignore data-lpignore="true" data-bwignore
+                         aria-describedby="setup-hex-hint">
+                  <button type="button" class="button-secondary reveal" data-reveal="setup-scan-secret" aria-label="Show scan secret key">Show</button>
+                </div>
+                <p class="field-error" id="setup-scan-secret-error" hidden></p>
+              </div>
+              <div class="field">
+                <label for="setup-spend-pubkey">Spend public key, 66 hex characters</label>
+                <input id="setup-spend-pubkey" name="spend_pubkey" type="text" class="mono"
+                       autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+                <p class="field-error" id="setup-spend-pubkey-error" hidden></p>
+              </div>
+            </div>
+          </details>
+
+          <div class="field">
+            <label for="setup-birthday">Birthday height</label>
+            <p class="hint" id="setup-birthday-hint">Enter the birthday block height Sparrow shows for this wallet. friglet scans from that block, and Sparrow only accepts a server that starts at the same height.</p>
+            <input id="setup-birthday" name="birthday_height" type="text" inputmode="numeric" class="mono input-short"
+                   autocomplete="off" spellcheck="false" aria-describedby="setup-birthday-hint">
+            <p class="field-error" id="setup-birthday-error" hidden></p>
+          </div>
+
+          <dl class="facts" id="setup-facts">
+            <div><dt>Network</dt><dd id="setup-network">Set by this box</dd></div>
+            <div><dt>Bitcoin node</dt><dd id="setup-node" class="mono">—</dd></div>
+          </dl>
+
+          <div class="preview" id="setup-preview" hidden>
+            <h2 class="h3">This descriptor belongs to</h2>
+            <dl class="facts">
+              <div><dt>Silent Payments address</dt><dd class="mono address" id="setup-preview-address"></dd></div>
+              <div><dt>Network</dt><dd id="setup-preview-network"></dd></div>
+              <div><dt>Key fingerprint</dt><dd class="mono" id="setup-preview-fingerprint"></dd></div>
+            </dl>
+            <p>Check that this address matches the Silent Payments receive address in Sparrow.</p>
+          </div>
+
+          <p class="oracle-note" id="setup-oracle-note"></p>
+          <p class="form-error" id="setup-form-error" tabindex="-1" hidden></p>
+          <div class="actions">
+            <button type="submit" class="button-primary" id="setup-submit">Save and start scanning</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- Status -->
+    <section class="view" id="view-status" aria-labelledby="status-headline" hidden>
+      <p class="severity" id="status-severity"></p>
+      <h1 id="status-headline" tabindex="-1">Status</h1>
+      <p class="detail" id="status-detail"></p>
+      <p class="detail" id="status-retry" hidden></p>
+      <p class="detail" id="status-nothing-found" hidden></p>
+
+      <div class="progress-block" id="status-progress-block" hidden>
+        <div class="progress-head">
+          <label for="status-progress">Scan progress</label>
+          <span class="num" id="status-progress-pct"></span>
+        </div>
+        <progress id="status-progress" max="1" value="0"></progress>
+        <p class="hint num" id="status-progress-text"></p>
+        <p class="hint" id="status-eta" hidden></p>
+      </div>
+
+      <div class="transaction" id="status-transaction" hidden></div>
+
+      <section class="block" aria-labelledby="status-wallet-title" id="status-wallet">
+        <h2 id="status-wallet-title">Wallet</h2>
+        <p class="label" id="status-address-label">Silent Payments address</p>
+        <div class="copy-row">
+          <p class="mono address" id="status-address">—</p>
+          <button type="button" class="button-secondary copy" data-copy="status-address">Copy<span class="visually-hidden"> address</span></button>
+        </div>
+        <p class="hint">Compare this with the Silent Payments receive address Sparrow shows for this wallet. They must be the same.</p>
+        <dl class="facts">
+          <div><dt>Address check</dt><dd id="status-identity"></dd></div>
+          <div><dt>Key fingerprint</dt><dd class="mono" id="status-fingerprint">—</dd></div>
+        </dl>
+      </section>
+
+      <div class="next-action" id="status-action" hidden></div>
+
+      <section class="block" aria-labelledby="status-details-title">
+        <h2 id="status-details-title">Details</h2>
+        <dl class="facts">
+          <div><dt>Payments found</dt><dd class="num" id="d-payments">—</dd></div>
+          <div><dt>Birthday</dt><dd class="num" id="d-birthday">—</dd></div>
+          <div><dt>Scanned to</dt><dd class="num" id="d-scanned">—</dd></div>
+          <div><dt>Node tip</dt><dd class="num" id="d-node-tip">—</dd></div>
+          <div><dt>Oracle tip</dt><dd class="num" id="d-oracle-tip">—</dd></div>
+          <div><dt>Network</dt><dd id="d-network">—</dd></div>
+          <div><dt>Bitcoin node</dt><dd id="d-node">—</dd></div>
+          <div><dt>Oracle</dt><dd id="d-oracle">—</dd></div>
+          <div><dt>Versions</dt><dd id="d-versions">—</dd></div>
+          <div><dt>Restarts</dt><dd class="num" id="d-restarts">—</dd></div>
+          <div><dt>Last update</dt><dd class="num" id="d-updated">—</dd></div>
+        </dl>
+      </section>
+    </section>
+
+    <!-- Connect -->
+    <section class="view" id="view-connect" aria-labelledby="connect-title" hidden>
+      <h1 id="connect-title" tabindex="-1">Connect Sparrow</h1>
+      <p class="notice" id="connect-gate" hidden></p>
+      <p class="detail" id="connect-partial" hidden></p>
+      <p class="detail" id="connect-loading">Loading connection details…</p>
+
+      <ol class="steps" id="connect-steps" hidden>
+        <li class="step">
+          <h2>Use a separate Sparrow for this wallet</h2>
+          <p>friglet serves only this one wallet. If your everyday Sparrow connects to it, every other wallet in that Sparrow shows as empty. Start a second Sparrow with its own data folder and open only this wallet there.</p>
+          <p class="emphasis">Other wallets are unaffected; switch Sparrow back to your old server to see them again.</p>
+          <details class="disclosure">
+            <summary>Commands to start a separate Sparrow</summary>
+            <div class="disclosure-body">
+              <p class="hint">Each command starts Sparrow with its own data folder, <span class="mono">.sparrow-friglet</span> in your home folder.</p>
+              <p class="label" id="cmd-linux-label">Linux</p>
+              <div class="copy-row">
+                <p class="mono command" id="cmd-linux"></p>
+                <button type="button" class="button-secondary copy" data-copy="cmd-linux">Copy<span class="visually-hidden"> Linux command</span></button>
+              </div>
+              <p class="label" id="cmd-mac-label">macOS</p>
+              <div class="copy-row">
+                <p class="mono command" id="cmd-mac"></p>
+                <button type="button" class="button-secondary copy" data-copy="cmd-mac">Copy<span class="visually-hidden"> macOS command</span></button>
+              </div>
+              <p class="label" id="cmd-windows-label">Windows</p>
+              <div class="copy-row">
+                <p class="mono command" id="cmd-windows"></p>
+                <button type="button" class="button-secondary copy" data-copy="cmd-windows">Copy<span class="visually-hidden"> Windows command</span></button>
+              </div>
+            </div>
+          </details>
+        </li>
+
+        <li class="step">
+          <h2>Enter this server in that Sparrow</h2>
+          <p>In Sparrow, open Settings, then Server, and choose Private Electrum. Fill in the fields as shown.</p>
+          <div id="connect-recommended"></div>
+          <div class="fingerprint" id="connect-fingerprint" hidden>
+            <p class="label" id="connect-fp-label">TLS certificate fingerprint (SHA-256)</p>
+            <div class="copy-row">
+              <p class="mono address" id="connect-fp"></p>
+              <button type="button" class="button-secondary copy" data-copy="connect-fp">Copy<span class="visually-hidden"> fingerprint</span></button>
+            </div>
+            <p class="hint">The first time Sparrow connects, it asks whether to trust this server's certificate. Accept only if the fingerprint it shows is this one.</p>
+          </div>
+        </li>
+
+        <li class="step" id="connect-others-step">
+          <h2>Other ways to connect</h2>
+          <details class="disclosure" id="connect-others">
+            <summary id="connect-others-summary">Show other endpoints</summary>
+            <div class="disclosure-body" id="connect-others-list"></div>
+          </details>
+        </li>
+
+        <li class="step">
+          <h2>Who can read this port</h2>
+          <p id="connect-exposure"></p>
+        </li>
+
+        <li class="step">
+          <h2>Test from this node</h2>
+          <p>This checks that Electrum answers on the recommended address, from the box itself.</p>
+          <div class="actions">
+            <button type="button" class="button-secondary" id="connect-test">Test from this node</button>
+          </div>
+          <p class="result" id="connect-test-result" tabindex="-1" hidden></p>
+          <details class="disclosure">
+            <summary>The test passes but Sparrow cannot connect</summary>
+            <div class="disclosure-body">
+              <ul class="plain-list">
+                <li>Make sure your computer is on the same network as this box.</li>
+                <li>Check the host, port and SSL setting against the values above, one field at a time.</li>
+                <li>If the host is a <span class="mono">.local</span> name and does not resolve on your computer, use the box's IP address instead.</li>
+                <li>Firewalls or VPNs on your computer can block the port. Try with them switched off.</li>
+                <li>For an onion address, Sparrow needs Tor: turn on Use Proxy in Sparrow's server settings.</li>
+              </ul>
+            </div>
+          </details>
+        </li>
+      </ol>
+      <p class="form-error" id="connect-error" tabindex="-1" hidden></p>
+    </section>
+
+    <!-- Wallet -->
+    <section class="view" id="view-wallet" aria-labelledby="wallet-title" hidden>
+      <h1 id="wallet-title" tabindex="-1">Wallet</h1>
+
+      <div class="transaction" id="wallet-transaction" hidden></div>
+
+      <section class="block" aria-labelledby="wallet-current-title">
+        <h2 id="wallet-current-title">Current wallet</h2>
+        <p class="label" id="wallet-address-label">Silent Payments address</p>
+        <div class="copy-row">
+          <p class="mono address" id="wallet-address">—</p>
+          <button type="button" class="button-secondary copy" data-copy="wallet-address">Copy<span class="visually-hidden"> address</span></button>
+        </div>
+        <dl class="facts">
+          <div><dt>Key fingerprint</dt><dd class="mono" id="wallet-fingerprint">—</dd></div>
+          <div><dt>Network</dt><dd id="wallet-network">—</dd></div>
+          <div><dt>Birthday</dt><dd class="num" id="wallet-birthday">—</dd></div>
+        </dl>
+      </section>
+
+      <section class="block" aria-labelledby="change-title" id="wallet-change">
+        <h2 id="change-title">Change wallet</h2>
+        <p>Changing the wallet stops scanning, keeps the current wallet aside so you can restore it, and rescans from the new birthday. Set the same birthday in Sparrow afterwards.</p>
+
+        <div class="stack" id="change-startos" hidden>
+          <p>On StartOS, change the wallet with the wallet setup action: in StartOS, open <strong>Services</strong>, then <strong>friglet</strong>, then <strong>Actions</strong>.</p>
+        </div>
+
+        <form id="change-form" class="form" novalidate>
+          <fieldset class="plain" id="change-fieldset">
+            <legend class="visually-hidden">New wallet</legend>
+            <div class="field">
+              <label for="change-descriptor">New Silent Payments descriptor</label>
+              <p class="hint" id="change-descriptor-hint">Copy it from Sparrow. It starts with <span class="mono">sp(spscan1</span>.</p>
+              <div class="input-row">
+                <input id="change-descriptor" name="descriptor" type="password" class="mono" data-action-focus
+                       autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+                       data-1p-ignore data-lpignore="true" data-bwignore
+                       aria-describedby="change-descriptor-hint">
+                <button type="button" class="button-secondary reveal" data-reveal="change-descriptor" aria-label="Show descriptor">Show</button>
+              </div>
+              <p class="field-error" id="change-descriptor-error" hidden></p>
+            </div>
+
+            <details class="disclosure" id="change-hex">
+              <summary>Enter the keys as hex instead</summary>
+              <div class="disclosure-body">
+                <p class="hint" id="change-hex-hint">Use this only if you cannot copy the descriptor, and leave the descriptor field empty.</p>
+                <div class="field">
+                  <label for="change-scan-secret">Scan secret key, 64 hex characters</label>
+                  <div class="input-row">
+                    <input id="change-scan-secret" name="scan_secret" type="password" class="mono"
+                           autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+                           data-1p-ignore data-lpignore="true" data-bwignore
+                           aria-describedby="change-hex-hint">
+                    <button type="button" class="button-secondary reveal" data-reveal="change-scan-secret" aria-label="Show scan secret key">Show</button>
+                  </div>
+                  <p class="field-error" id="change-scan-secret-error" hidden></p>
+                </div>
+                <div class="field">
+                  <label for="change-spend-pubkey">Spend public key, 66 hex characters</label>
+                  <input id="change-spend-pubkey" name="spend_pubkey" type="text" class="mono"
+                         autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+                  <p class="field-error" id="change-spend-pubkey-error" hidden></p>
+                </div>
+              </div>
+            </details>
+
+            <div class="field">
+              <label for="change-birthday">Birthday height</label>
+              <p class="hint" id="change-birthday-hint">The birthday block height Sparrow shows for the new wallet.</p>
+              <input id="change-birthday" name="birthday_height" type="text" inputmode="numeric" class="mono input-short"
+                     autocomplete="off" spellcheck="false" aria-describedby="change-birthday-hint">
+              <p class="field-error" id="change-birthday-error" hidden></p>
+            </div>
+
+            <p class="form-error" id="change-form-error" tabindex="-1" hidden></p>
+            <div class="actions">
+              <button type="submit" class="button-primary" id="change-review">Review change</button>
+            </div>
+          </fieldset>
+        </form>
+
+        <div class="confirm" id="change-confirm" hidden>
+          <h3 id="change-confirm-title" tabindex="-1">Replace the wallet?</h3>
+          <dl class="facts">
+            <div><dt>Current wallet</dt><dd><span class="mono address" id="confirm-old-address"></span> <span class="hint" id="confirm-old-meta"></span></dd></div>
+            <div><dt>New wallet</dt><dd><span class="mono address" id="confirm-new-address"></span> <span class="hint" id="confirm-new-meta"></span></dd></div>
+          </dl>
+          <p id="confirm-rescan"></p>
+          <p>The current wallet is kept on this box as a backup until the new one has verified progress, so you can restore it. Sparrow shows the new wallet's payments as the rescan finds them.</p>
+          <p class="form-error" id="change-confirm-error" tabindex="-1" hidden></p>
+          <div class="actions">
+            <button type="button" class="button-primary" id="change-confirm-yes">Replace wallet and rescan</button>
+            <button type="button" class="button-secondary" id="change-confirm-no">Back</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="block" aria-labelledby="restore-title" id="wallet-restore">
+        <h2 id="restore-title">Restore previous wallet</h2>
+        <p>If a wallet change went wrong, put the previous wallet back. The backup is deleted once the new wallet has verified progress for 24 hours.</p>
+        <div class="actions" id="restore-start">
+          <button type="button" class="button-secondary" id="restore-open">Restore previous wallet</button>
+        </div>
+        <div class="confirm" id="restore-confirm" hidden>
+          <p id="restore-confirm-text" tabindex="-1">The current wallet is replaced by the one set up before the last change, and friglet continues from that wallet's saved scan.</p>
+          <div class="actions">
+            <button type="button" class="button-primary" id="restore-yes">Restore previous wallet</button>
+            <button type="button" class="button-secondary" id="restore-no">Cancel</button>
+          </div>
+        </div>
+        <p class="result" id="restore-result" tabindex="-1" hidden></p>
+      </section>
+
+      <section class="block" aria-labelledby="forget-title" id="wallet-forget">
+        <h2 id="forget-title">Forget wallet</h2>
+        <p>Deletes this wallet's configuration, key, scan progress and backup from this box, then returns to setup. Your funds and your Sparrow wallet are not affected.</p>
+        <div class="actions" id="forget-start">
+          <button type="button" class="button-danger" id="forget-open">Forget wallet</button>
+        </div>
+        <div class="confirm confirm-danger" id="forget-confirm" hidden>
+          <p id="forget-confirm-text" tabindex="-1"></p>
+          <div class="actions">
+            <button type="button" class="button-danger-solid" id="forget-yes">Forget this wallet</button>
+            <button type="button" class="button-secondary" id="forget-no">Cancel</button>
+          </div>
+        </div>
+        <p class="form-error" id="forget-error" tabindex="-1" hidden></p>
+      </section>
+    </section>
+
+    <!-- Diagnostics (placeholder) -->
+    <section class="view" id="view-diagnostics" aria-labelledby="diag-title" hidden>
+      <h1 id="diag-title" tabindex="-1">Diagnostics</h1>
+      <p>A diagnostics download, built only from structured data and never from raw logs, comes in a later version. Until then, the logs on your platform show what friglet is doing.</p>
+
+      <section class="block" aria-labelledby="logs-title">
+        <h2 id="logs-title">Where the logs are</h2>
+        <p class="notice">friglet's logs currently contain transaction ids, amounts and IP addresses. Share them only with people you trust, and remove those details before posting them anywhere public.</p>
+        <dl class="facts logs" id="logs-list">
+          <div data-platform="umbrel"><dt>Umbrel</dt><dd>On the Umbrel home screen, open the friglet app's menu and choose Troubleshoot.</dd></div>
+          <div data-platform="startos"><dt>StartOS</dt><dd>In StartOS, open Services, then friglet, then Logs.</dd></div>
+          <div data-platform="raspiblitz"><dt>RaspiBlitz</dt><dd>Over SSH: <span class="mono">sudo journalctl -u friglet -n 200</span></dd></div>
+          <div data-platform="mynode"><dt>myNode</dt><dd>On the friglet app page in myNode, open the logs. Over SSH: <span class="mono">sudo journalctl -u friglet -n 200</span></dd></div>
+          <div data-platform="compose"><dt>Docker Compose</dt><dd>In the folder with the compose file: <span class="mono">docker compose logs --tail 200</span></dd></div>
+        </dl>
+      </section>
+
+      <section class="block" aria-labelledby="diag-facts-title">
+        <h2 id="diag-facts-title">When you ask for help</h2>
+        <p>Include the state id and versions below. They contain no keys, addresses or amounts.</p>
+        <dl class="facts">
+          <div><dt>State id</dt><dd class="mono" id="diag-state">—</dd></div>
+          <div><dt>Platform</dt><dd class="mono" id="diag-platform">—</dd></div>
+          <div><dt>Versions</dt><dd class="mono" id="diag-versions">—</dd></div>
+          <div><dt>Restarts</dt><dd class="num" id="diag-restarts">—</dd></div>
+        </dl>
+      </section>
+    </section>
+
+    <div class="visually-hidden" id="live" aria-live="polite" aria-atomic="true"></div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <p class="hint" id="footer-versions">friglet</p>
+    </div>
+  </footer>
+</body>
+</html>
