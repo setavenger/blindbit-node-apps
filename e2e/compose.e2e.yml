@@ -1,0 +1,12 @@
+# e2e / dev-regtest override for compose/docker-compose.yml: run friglet-node on the
+# blindbit-testkit stack's network (bitcoind, oracle). The service name `friglet-node` is its
+# host name there. Used by e2e/run.sh and e2e/dev-regtest.sh only.
+services:
+  friglet-node:
+    networks:
+      - testkit
+
+networks:
+  testkit:
+    name: ${E2E_NETWORK:?set by e2e/lib.sh}
+    external: true
