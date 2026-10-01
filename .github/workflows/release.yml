@@ -1,0 +1,90 @@
+# Release on a version tag v<friglet short commit>-<package revision> (e.g. v93f6a92-1):
+# multi-arch image to IMAGE_REPO (GHCR placeholder until the registry is decided), native
+# tarballs + SHA256SUMS on a draft GitHub release. Publishing the draft stays a maintainer step.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write   # draft release + assets
+      packages: write   # GHCR push
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Load versions.env
+        run: grep -E '^[A-Z][A-Z0-9_]*=' versions.env >> "$GITHUB_ENV"
+      - name: Tag, pins and source checks
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${BLINDBIT_RS_REV:0:7}-${PACKAGE_REVISION}"
+          [ "$TAG" = "v$version" ] || { echo "::error::tag $TAG does not match versions.env (v$version)"; exit 1; }
+          [ -z "${BLINDBIT_RS_SRC:-}" ] || { echo "::error::release builds never use BLINDBIT_RS_SRC"; exit 1; }
+          scripts/update-pins.sh --check
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          platforms: arm64
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Binaries (both architectures)
+        run: scripts/build-binaries.sh
+      - name: Release build kind, glibc floor, execution (arm64 under QEMU)
+        env:
+          REQUIRE_ARM64_EXEC: "1"
+        run: |
+          grep -qx 'build=release' build/out/BUILDINFO
+          grep -qx "version=$VERSION" build/out/BUILDINFO
+          scripts/check-binaries.sh
+      - name: Tarballs + SHA256SUMS
+        run: scripts/dist.sh
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Multi-arch image -> ${{ env.IMAGE_REPO }}:${{ env.VERSION }}
+        id: push
+        run: |
+          docker buildx build --platform linux/amd64,linux/arm64 --target runtime \
+            --build-arg "VCS_REF=$GITHUB_SHA" --provenance=mode=max \
+            -t "$IMAGE_REPO:$VERSION" --push --metadata-file build/image-metadata.json .
+          digest=$(jq -r '."containerimage.digest"' build/image-metadata.json)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Image"
+            echo "\`$IMAGE_REPO:$VERSION@$digest\`"
+            echo
+            echo "Record it in versions.env as IMAGE_DIGEST=$digest and run scripts/update-pins.sh."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify the pushed index has amd64 and arm64
+        run: |
+          docker buildx imagetools inspect "$IMAGE_REPO:$VERSION@${{ steps.push.outputs.digest }}" --format '{{json .Manifest}}' \
+            | jq -e '[.manifests[].platform | select(.os == "linux") | .architecture] | (index("amd64") != null) and (index("arm64") != null)'
+      # TODO(signing): UNSIGNED. Sign dist/SHA256SUMS and the image digest once the signing key
+      # and scheme are decided (plan: open items; e.g. minisign or GPG for SHA256SUMS, cosign
+      # for the image). Until then the release notes say the artifacts are unsigned.
+      - name: Signing (TODO, key undecided)
+        run: echo "::warning::artifacts are NOT signed yet (signing key undecided)"
+      - name: Draft GitHub release with tarballs and SHA256SUMS
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          {
+            echo "friglet-node $VERSION: friglet from blindbit-rs $BLINDBIT_RS_REV, package revision $PACKAGE_REVISION."
+            echo
+            echo "Image: \`$IMAGE_REPO:$VERSION@$DIGEST\` (linux/amd64, linux/arm64)."
+            echo "Native tarballs: glibc >= $GLIBC_VERSION (Debian bookworm), checksums in SHA256SUMS."
+            echo
+            echo "**Unsigned**: the signing key is not decided yet."
+          } > build/release-notes.md
+          gh release create "$TAG" --draft --verify-tag --title "friglet-node $VERSION" \
+            --notes-file build/release-notes.md dist/*.tar.gz dist/SHA256SUMS
