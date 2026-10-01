@@ -2,6 +2,8 @@ import {
   peerLocalHostId,
   peerPortLocal,
 } from 'bitcoin-core-startos/startos/utils'
+import { applyUiPassword, generateUiPassword } from './actions/uiPassword'
+import { storeJson } from './fileModels/store.json'
 import { scanHealth, ScanHealth } from './health/scan'
 import { i18n } from './i18n'
 import { sdk } from './sdk'
@@ -103,6 +105,16 @@ export const main = sdk.setupMain(async ({ effects }) => {
 
   // StartOS mounts volumes root-owned; friglet-ui runs as uid 1000.
   await ensureOwnership(sdk.volumes.main.path, frigletUid, frigletGid)
+
+  // friglet-ui's login password, from store.json into FRIGLET_UI_PASSWORD_FILE
+  // (re-read by friglet-ui on every start). Read once: "Reset web UI password"
+  // rewrites the file and restarts the service itself.
+  let uiPassword = await storeJson.read((s) => s.uiPassword).once()
+  if (!uiPassword) {
+    uiPassword = generateUiPassword()
+    await storeJson.merge(effects, { uiPassword })
+  }
+  await applyUiPassword(uiPassword)
 
   const env = { ...baseEnv, FRIGLET_UI_NODE: node }
 

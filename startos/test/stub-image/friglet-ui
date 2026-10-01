@@ -129,8 +129,29 @@ cmd_run() {
   stray_env && exit 2
   [ -n "${FRIGLET_UI_NETWORK:-}" ] || { echo "friglet-ui: FRIGLET_UI_NETWORK is required" >&2; exit 2; }
   [ -n "${FRIGLET_UI_NODE:-}" ] || { echo "friglet-ui: FRIGLET_UI_NODE is required" >&2; exit 2; }
+  auth="${FRIGLET_UI_AUTH:-password}"
+  case "$auth" in
+    password)
+      if [ -n "${FRIGLET_UI_PASSWORD_FILE:-}" ]; then
+        [ -r "$FRIGLET_UI_PASSWORD_FILE" ] || { echo "friglet-ui: password file $FRIGLET_UI_PASSWORD_FILE is not readable" >&2; exit 2; }
+        [ "$(stat -c %a "$FRIGLET_UI_PASSWORD_FILE")" = 600 ] || { echo "friglet-ui: password file must be mode 0600" >&2; exit 2; }
+        pw=$(cat "$FRIGLET_UI_PASSWORD_FILE")   # $(...) trims the trailing newline
+      else
+        pw="${FRIGLET_UI_PASSWORD:-}"
+      fi
+      [ -n "$pw" ] || { echo "friglet-ui: auth=password needs FRIGLET_UI_PASSWORD_FILE or FRIGLET_UI_PASSWORD" >&2; exit 2; }
+      new=$(printf '%s' "$pw" | sha256sum | cut -c1-64); unset pw
+      old=$(cat "$DATA/ui-password.hash" 2>/dev/null || true)
+      if [ "$new" != "$old" ]; then
+        (umask 077; printf '%s\n' "$new" > "$DATA/ui-password.hash")
+        echo "friglet-ui STUB: web UI password changed; all sessions ended"
+      fi ;;
+    gateway) [ "${FRIGLET_UI_PLATFORM:-compose}" = umbrel ] || { echo "friglet-ui: auth=gateway is for umbrel only" >&2; exit 2; } ;;
+    none) [ "${FRIGLET_UI_PLATFORM:-compose}" = compose ] || { echo "friglet-ui: auth=none is for compose only" >&2; exit 2; } ;;
+    *) echo "friglet-ui: unknown FRIGLET_UI_AUTH $auth" >&2; exit 2 ;;
+  esac
   listen="${FRIGLET_UI_LISTEN:-0.0.0.0:8097}"
-  echo "friglet-ui STUB: web UI on $listen, network $FRIGLET_UI_NETWORK, node $FRIGLET_UI_NODE, auth ${FRIGLET_UI_AUTH:-password}"
+  echo "friglet-ui STUB: web UI on $listen, network $FRIGLET_UI_NETWORK, node $FRIGLET_UI_NODE, auth $auth"
   httpd -f -p "$listen" -h /usr/share/friglet-ui-stub/www & ui=$!
   el=""
   if [ -f "$DATA/scan.key" ] && [ "${FRIGLET_UI_ELECTRUM_TCP:-}" != off ]; then
