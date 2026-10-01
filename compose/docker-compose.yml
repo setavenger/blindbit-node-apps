@@ -1,0 +1,41 @@
+# friglet-node on any Docker host. Quickstart: compose/README.md.
+#
+#   cp .env.example .env && $EDITOR .env && docker compose up -d
+#
+# Only the FRIGLET_UI_* variables listed under `environment` reach the container. The rest of
+# .env (image, host ports, bind address) is used by Compose itself.
+name: friglet-node
+
+services:
+  friglet-node:
+    # Default generated from versions.env by scripts/update-pins.sh.
+    image: ${FRIGLET_NODE_IMAGE:-ghcr.io/setavenger/friglet-node:93f6a92-1}
+    restart: unless-stopped
+    environment:
+      FRIGLET_UI_PLATFORM: compose
+      FRIGLET_UI_NETWORK: ${FRIGLET_UI_NETWORK:?set FRIGLET_UI_NETWORK in .env (bitcoin, signet, testnet4 or regtest)}
+      FRIGLET_UI_NODE: ${FRIGLET_UI_NODE:?set FRIGLET_UI_NODE in .env to your Bitcoin node P2P host:port}
+      FRIGLET_UI_PASSWORD: ${FRIGLET_UI_PASSWORD:?set FRIGLET_UI_PASSWORD in .env (password for the web page)}
+      # Optional; passed only when set in .env or the shell.
+      FRIGLET_UI_AUTH:
+      FRIGLET_UI_ORACLE_URL:
+      FRIGLET_UI_PUBLIC_HOST:
+      FRIGLET_UI_ONION_HOST:
+      FRIGLET_UI_ALLOWED_HOSTS:
+      FRIGLET_UI_ELECTRUM_TCP:
+      FRIGLET_UI_ELECTRUM_TLS:
+      FRIGLET_UI_LOG:
+    ports:
+      - "${BIND_ADDRESS:-0.0.0.0}:${UI_PORT:-8097}:8097"              # web page
+      - "${BIND_ADDRESS:-0.0.0.0}:${ELECTRUM_PORT:-50031}:50031"      # Electrum, plaintext
+      - "${BIND_ADDRESS:-0.0.0.0}:${ELECTRUM_TLS_PORT:-50032}:50032"  # Electrum, TLS
+    extra_hosts:
+      # Lets FRIGLET_UI_NODE=host.docker.internal:8333 reach a node on this host (Linux too).
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - friglet-data:/data
+    # friglet-ui gives friglet up to 120 s to stop cleanly (it may be blocked in a P2P read).
+    stop_grace_period: 150s
+
+volumes:
+  friglet-data:
