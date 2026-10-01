@@ -1,0 +1,186 @@
+# CI for blindbit-node-apps. Every version comes from versions.env (loaded into the job
+# environment by the first step of each job); actions are pinned by commit.
+name: ci
+
+on:
+  push:
+    branches: [master, integration]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  pins:
+    name: pins match versions.env
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: scripts/update-pins.sh --check
+
+  lint:
+    name: shellcheck, hadolint, actionlint
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: scripts/lint.sh
+
+  rust:
+    name: friglet-ui fmt, clippy, test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Load versions.env
+        run: grep -E '^[A-Z][A-Z0-9_]*=' versions.env >> "$GITHUB_ENV"
+      - name: Rust toolchain ${{ env.RUST_VERSION }}
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal --component rustfmt,clippy
+          echo "RUSTUP_TOOLCHAIN=$RUST_VERSION" >> "$GITHUB_ENV"
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+
+  binaries:
+    name: binaries (amd64 + arm64), glibc floor, execution, tarballs
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          platforms: arm64
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build friglet + friglet-ui for both architectures (cargo-zigbuild, no QEMU)
+        env:
+          EXTRA_BUILD_ARGS: --cache-from type=gha,scope=builder --cache-to type=gha,scope=builder,mode=max
+        run: scripts/build-binaries.sh
+      - name: ELF machine, GLIBC <= 2.36, execute on bookworm (arm64 under QEMU)
+        env:
+          REQUIRE_ARM64_EXEC: "1"
+        run: scripts/check-binaries.sh
+      - name: Tarballs + SHA256SUMS
+        run: scripts/dist.sh
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist
+          path: dist/
+          retention-days: 14
+
+  image:
+    name: image (amd64 + arm64)
+    # After binaries, so the builder stage comes from its BuildKit cache instead of recompiling.
+    needs: binaries
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          platforms: arm64
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build friglet-node:dev-amd64 and friglet-node:dev-arm64
+        env:
+          EXTRA_BUILD_ARGS: --cache-from type=gha,scope=builder
+        run: scripts/build-image.sh amd64 arm64
+      - name: Run the arm64 image under QEMU
+        run: |
+          docker run --rm --platform linux/arm64 friglet-node:dev-arm64 --version
+          docker run --rm --platform linux/arm64 friglet-node:dev-arm64 self-test
+          docker run --rm --platform linux/arm64 --entrypoint /usr/local/bin/friglet friglet-node:dev-arm64 --help
+      - name: Image contract (user, entrypoint, volume, ports, labels)
+        run: |
+          for a in amd64 arm64; do
+            docker image inspect "friglet-node:dev-$a" --format \
+              '{{.Architecture}} user={{.Config.User}} entrypoint={{json .Config.Entrypoint}} volumes={{json .Config.Volumes}} ports={{json .Config.ExposedPorts}} friglet={{index .Config.Labels "dev.blindbit.friglet.commit"}}'
+            test "$(docker image inspect "friglet-node:dev-$a" --format '{{.Config.User}}')" = 1000:1000
+          done
+      - name: Save images for later jobs
+        run: |
+          mkdir -p images
+          docker save friglet-node:dev-amd64 | gzip -1 > images/friglet-node-amd64.tar.gz
+          docker save friglet-node:dev-arm64 | gzip -1 > images/friglet-node-arm64.tar.gz
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: images
+          path: images/
+          retention-days: 3
+          compression-level: 0
+
+  quickstart:
+    name: compose quickstart (verbatim)
+    needs: image
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: images
+          path: images
+      - run: gunzip -c images/friglet-node-amd64.tar.gz | docker load
+      - run: IMAGE=friglet-node:dev-amd64 scripts/quickstart-smoke.sh
+
+  e2e:
+    name: regtest end to end (blindbit-testkit)
+    needs: image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: images
+          path: images
+      - run: gunzip -c images/friglet-node-amd64.tar.gz | docker load
+      - run: IMAGE=friglet-node:dev-amd64 e2e/run.sh
+
+  umbrel:
+    name: Umbrel linter
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Load versions.env
+        run: grep -E '^[A-Z][A-Z0-9_]*=' versions.env >> "$GITHUB_ENV"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: FORMAT=github scripts/ci/umbrel-lint.sh
+
+  mynode:
+    name: myNode create.py check
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: scripts/ci/mynode-check.sh
+
+  startos:
+    name: StartOS .s9pk (x86_64 + aarch64)
+    needs: image
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Load versions.env
+        run: grep -E '^[A-Z][A-Z0-9_]*=' versions.env >> "$GITHUB_ENV"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Packing tools (tar2sqfs, jq)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends squashfs-tools-ng jq
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: images
+          path: images
+      - run: for f in images/*.tar.gz; do gunzip -c "$f" | docker load; done
+      - run: scripts/ci/startos-pack.sh
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: s9pk
+          path: startos/*.s9pk
+          retention-days: 14
+          if-no-files-found: ignore
