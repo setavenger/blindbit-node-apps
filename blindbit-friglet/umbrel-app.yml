@@ -1,0 +1,83 @@
+manifestVersion: 2.0
+id: blindbit-friglet
+storage:
+  dataRoot: data
+category: bitcoin
+name: Friglet
+version: "93f6a92-1"
+tagline: Silent Payments Electrum server for Sparrow, backed by your own node
+icon: https://raw.githubusercontent.com/setavenger/blindbit-rs/93f6a92805b97921087b43e626ce4d3d766a3c36/friglet-tray/icons/icon.png
+description: >-
+  Friglet scans the blockchain for payments to one Silent Payments wallet and serves that wallet
+  to Sparrow over the Electrum protocol. Blocks come from your own Bitcoin node and transactions
+  are broadcast through it. Open the app, paste the Silent Payments descriptor that Sparrow shows
+  (sp(spscan1...)) and the wallet's birthday height, and Friglet scans from that height.
+
+
+  Read this before you install:
+
+
+  - Unpruned node required. Friglet downloads every block since your wallet's birthday from the
+  Bitcoin Node app. A pruned node cannot serve those blocks, and the scan stops with "node pruned".
+  The node must also be fully synced.
+
+  - Use a dedicated Sparrow instance. Friglet knows only this one wallet, so every other wallet in
+  a Sparrow that points at it shows up empty. Run the Silent Payments wallet in a separate Sparrow
+  with its own data directory; the app's Connect page shows how. Your other wallets are not
+  changed: switch Sparrow back to your usual server and they show up again.
+
+  - Third-party oracle. Friglet downloads per-block Silent Payments data from the BlindBit oracle
+  (oracle.setor.dev; signet.oracle.setor.dev on signet). The oracle is run by the BlindBit
+  developer, not by Umbrel and not by you. Its operator can see your Umbrel's public IP address,
+  which block ranges it scans and when. It never receives your keys, addresses or balance.
+
+  - Electrum ports are open on your network. Port 50031 (unencrypted) and port 50032 (TLS with a
+  self-signed certificate) are published on your Umbrel's local network address, and port 50031 is
+  also reachable at a Tor address that only the app shows you. These ports have no password:
+  anyone who can reach them can read this wallet's addresses, transactions and balance history.
+  Do not forward them on your router.
+
+  - Your scan key is stored in the app's data, so it is part of your Umbrel backups.
+
+
+  Preview release: until the pending BlindBit fixes for spend detection and chain
+  reorganisations ship, spent payments can still show as unspent. Test with a signet wallet or
+  small amounts.
+releaseNotes: ""
+
+developer: BlindBit
+website: https://github.com/setavenger/blindbit-rs
+dependencies:
+  - bitcoin
+repo: https://github.com/setavenger/blindbit-rs
+support: https://github.com/setavenger/blindbit-node-apps/issues
+
+port: 2104
+gallery: []
+path: ""
+
+defaultUsername: ""
+defaultPassword: ""
+
+widgets:
+  - id: "scan"
+    type: "text-with-progress"
+    refresh: "30s"
+    endpoint: "friglet-node:8097/api/widget"
+    link: ""
+    example:
+      type: "text-with-progress"
+      link: ""
+      title: "Silent Payments scan"
+      text: "42%"
+      subtext: "Block 850,000 of 900,000"
+      progressLabel: "Scanning"
+      progress: 0.42
+
+# Rebuildable block-header cache next to friglet's state file. Never add config.toml, scan.key,
+# scanner_state.json or prev/ here: they hold the wallet and are needed to restore it.
+backupIgnore:
+  - data/friglet/scanner_state.headers.json
+
+submitter: setavenger
+submission: https://github.com/setavenger/blindbit-node-apps

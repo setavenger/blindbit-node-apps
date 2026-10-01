@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Start Tor before friglet-node so the Electrum onion hostname exists when friglet-node is
+# created. Every compose call re-sources exports.sh, which reads the hostname into
+# FRIGLET_UI_ONION_HOST. Same pattern as the electrs app.
+
+HIDDEN_SERVICE_FILE="${TOR_DATA_DIR}/app-${APP_ID}-electrum/hostname"
+
+if [[ -f "${HIDDEN_SERVICE_FILE}" ]]; then
+	exit 0
+fi
+
+"${UMBREL_ROOT}/scripts/app" compose "${APP_ID}" up --detach tor
+
+echo "App: ${APP_ID} - waiting for the Electrum onion hostname..."
+
+for attempt in $(seq 1 300); do
+	if [[ -f "${HIDDEN_SERVICE_FILE}" ]]; then
+		echo "App: ${APP_ID} - Electrum onion hostname created"
+		exit 0
+	fi
+	sleep 0.1
+done
+
+echo "App: ${APP_ID} - Electrum onion hostname not created yet; the Connect page shows it after the next restart"

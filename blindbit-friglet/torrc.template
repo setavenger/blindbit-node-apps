@@ -1,0 +1,3 @@
+# friglet Electrum (plaintext port 50031) onion service
+HiddenServiceDir /data/app-$APP_ID-electrum
+HiddenServicePort 50031 $APP_BLINDBIT_FRIGLET_NODE_IP:50031
