@@ -83,9 +83,12 @@ use the same birthday.
 
 ## Web UI
 
-Open the **Web UI** interface. StartOS serves it over HTTPS with your server's root CA and
-asks for a login before any request reaches friglet: user `friglet`, password from
-**Show web UI password**. **Reset web UI password** replaces it without restarting friglet.
+Open the **Web UI** interface. StartOS serves it over HTTPS with your server's root CA, and
+friglet-ui shows its sign-in page: enter the password from **Show web UI password**. The
+login applies on every path to port 8097, including other services on the server and a LAN
+you mark secure. **Reset web UI password** generates a new password, writes it to
+`/data/ui-password` (0600) and restarts friglet if it is running; friglet-ui then replaces
+its stored hash and signs everyone out. Resetting does not touch the wallet or the scan.
 
 ## Connect Sparrow
 
@@ -105,7 +108,7 @@ reach the Electrum port can read this wallet's history, so only add addresses yo
 
 | Port | Where | What |
 |---|---|---|
-| 8097/tcp | container | friglet-ui (HTTP); off the box only through the StartOS HTTPS proxy with basic auth |
+| 8097/tcp | container | friglet-ui (HTTP, own password login); off the box through the StartOS HTTPS proxy |
 | 50031/tcp | container, bridge only | plaintext Electrum from friglet-ui; StartOS terminates TLS in front of it |
 | assigned at install (prefers 50032) | LAN / onion / domain | Electrum over SSL, the address wallets use |
 | 127.0.0.1:50001, 127.0.0.1:8095 | inside the container | friglet's own Electrum and HTTP API, never exposed |

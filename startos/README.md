@@ -28,24 +28,26 @@ and `friglet-ui`: [`docs/contract.md`](../docs/contract.md).
 - The daemon runs the image entrypoint `tini -- friglet-ui`; friglet-ui supervises friglet.
   SIGTERM timeout 150 s (friglet-ui waits up to 120 s for friglet).
 - Configuration is environment only, all `FRIGLET_UI_*`: platform `startos`, network
-  `bitcoin`, data dir `/data`, UI on `0.0.0.0:8097`, auth `gateway` (the StartOS proxy
-  authenticates), plaintext Electrum on `0.0.0.0:50031`, Electrum TLS `off` (StartOS
+  `bitcoin`, data dir `/data`, UI on `0.0.0.0:8097`, auth `password` with
+  `FRIGLET_UI_PASSWORD_FILE=/data/ui-password` (friglet-ui's own login), plaintext Electrum on `0.0.0.0:50031`, Electrum TLS `off` (StartOS
   terminates TLS), and `FRIGLET_UI_NODE` = bitcoind's `peer-local` bridge address.
 - Before the daemon starts, the package hands `/data` to uid 1000 and sets it to 0700
-  (StartOS mounts volumes root-owned).
+  (StartOS mounts volumes root-owned), then writes `store.json`'s `uiPassword` to
+  `/data/ui-password` (0600, uid 1000). friglet-ui re-reads that file on every start; a
+  changed value replaces its password hash and ends all sessions.
 
 ## Volume and Data Layout
 
 | Volume | Mounted at | Contents |
 |---|---|---|
-| `main` | `/data` | friglet-ui's data dir: `config.toml`, `scan.key` (0600), friglet's state file, `prev/`, control sockets |
+| `main` | `/data` | friglet-ui's data dir: `config.toml`, `scan.key` (0600), friglet's state file, `prev/`, control sockets, `ui-password` (0600, written by the package) |
 | `startos` | not mounted | `store.json` (package state) |
 
 ## File Models
 
-`store.json` on `startos`: `uiPassword` (proxy basic-auth password), `walletConfigured`
+`store.json` on `startos`: `uiPassword` (friglet-ui's web UI password), `walletConfigured`
 (switches the setup action to "Change wallet"), `spAddress` (public address of the wallet).
-The package never models or writes friglet-ui's own files; `friglet-ui setup` does.
+Apart from `ui-password`, the package never writes friglet-ui's files; `friglet-ui setup` does.
 
 ## Dependencies
 
@@ -60,7 +62,7 @@ The package never models or writes friglet-ui's own files; `friglet-ui setup` do
 
 | Interface | Container port | Off-box | Notes |
 |---|---|---|---|
-| `ui` (Web UI) | 8097 http | HTTPS via the StartOS proxy, basic auth `friglet` / `uiPassword` | plaintext only on the bridge |
+| `ui` (Web UI) | 8097 http | HTTPS via the StartOS proxy; friglet-ui's password login on every path | plaintext on the bridge and on a LAN marked secure |
 | `electrum` (Electrum (SSL)) | 50031 tcp | `ssl://` via StartOS TLS, preferred external port 50032 | plaintext 50031 only on the bridge; addresses marked `ssl`/`tcp` |
 
 ## Installation and First-Run Flow
@@ -74,8 +76,8 @@ The package never models or writes friglet-ui's own files; `friglet-ui setup` do
 | Action | When | What it does | Repeat safety |
 |---|---|---|---|
 | `setup-wallet` (Set up wallet / Change wallet) | first run; to replace the wallet | runs `friglet-ui setup --network bitcoin --birthday N --json [--node peer-local] [--replace]` in a one-off subcontainer, descriptor on stdin; friglet-ui hands it to a running supervisor or stages files under a `flock`; 60 s timeout; returns the SP address | same descriptor and birthday is a no-op; a different wallet needs Change wallet (`--replace`) |
-| `show-ui-password` | to log in | shows `friglet` / `uiPassword` | read-only |
-| `reset-ui-password` | password leaked or lost | new random password; the proxy picks it up, friglet-ui keeps running | each run replaces the password |
+| `show-ui-password` | to log in | shows `uiPassword` | read-only |
+| `reset-ui-password` | password leaked or lost | new random password into `store.json` and `/data/ui-password`, restarts the service if it runs; friglet-ui ends all sessions | each run replaces the password |
 
 ## Tasks
 
@@ -96,15 +98,15 @@ The package never models or writes friglet-ui's own files; `friglet-ui setup` do
 ## Backups and Restore
 
 Both volumes, sockets excluded. The state file is kept so a restore does not rescan.
-Backups contain the scan key (`scan.key`, state file), encrypted with the StartOS master
-password.
+Backups contain the scan key (`scan.key`, state file) and the web UI password, encrypted
+with the StartOS master password.
 
 ## Limitations and Differences
 
 - One wallet. Electrum serves only that wallet (BR1, BR2 in `docs/plan.md`).
 - Mainnet only (StartOS Bitcoin is mainnet).
-- Inside the server, other services on the bridge reach the UI's plaintext port without the
-  proxy's basic auth.
+- Other services on the server (and a LAN marked secure) reach port 8097 in plaintext;
+  friglet-ui's login still applies there.
 
 ## Quick Reference for AI Consumers
 
@@ -113,7 +115,7 @@ package_id: blindbit-friglet   # permanent
 image: friglet-node (dockerTag; FRIGLET_NODE_IMAGE overrides at pack time)
 arch: [x86_64, aarch64]
 volumes: {main: /data, startos: unmounted store.json}
-interfaces: {ui: 8097 http + basic auth, electrum: 50031 tcp, ssl external (pref 50032)}
+interfaces: {ui: 8097 http (friglet-ui password login), electrum: 50031 tcp, ssl external (pref 50032)}
 dependencies: {bitcoind: running, peer-local P2P, prune=0 task}
 actions: [setup-wallet, show-ui-password, reset-ui-password]
 health_checks: [primary, scan, electrum]

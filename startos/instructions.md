@@ -8,7 +8,7 @@
 
 ## What you get on StartOS
 
-- **Web UI** — the wallet's identity, scan progress and connection details. Your browser asks for a username and password: the username is `friglet`, and the **Show web UI password** action shows the password.
+- **Web UI** — the wallet's identity, scan progress and connection details. It opens on a sign-in page; the **Show web UI password** action shows the password.
 - **Electrum (SSL)** — the endpoint Sparrow connects to. It serves this one wallet's history to anyone who can reach it, so only add addresses (Tor, a domain) to it that you mean to use.
 
 friglet scans for one wallet. It fetches blocks from your Bitcoin node over the node's whitelisted peer port, and it asks the BlindBit oracle at `oracle.setor.dev`, run by a third party, for the data a scan needs. The oracle sees this server's IP address and which block ranges it scans, never your keys.
@@ -34,8 +34,8 @@ Sparrow shows payments up to the block friglet has scanned so far; more appear a
 ## Actions
 
 - **Set up wallet / Change wallet** — tells friglet which wallet to scan for. Once a wallet is set up, the action is called **Change wallet**: it replaces the wallet and friglet scans again from the new birthday. Set the same birthday in Sparrow.
-- **Show web UI password** — shows the login for the web UI.
-- **Reset web UI password** — replaces the web UI password with a new random one.
+- **Show web UI password** — shows the password for the web UI's sign-in page.
+- **Reset web UI password** — replaces the web UI password with a new random one, signs everyone out, and restarts friglet if it is running.
 
 ## Limitations
 
