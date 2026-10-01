@@ -1,0 +1,8 @@
+# Allowlist: the image build needs only the workspace and the pins.
+*
+!Cargo.toml
+!Cargo.lock
+!versions.env
+!friglet-ui/
+**/target/
+**/node_modules/
