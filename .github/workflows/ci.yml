@@ -49,8 +49,8 @@ jobs:
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked
 
-  binaries:
-    name: binaries (amd64 + arm64), glibc floor, execution, tarballs
+  build:
+    name: binaries + images (amd64, arm64), glibc floor, execution, tarballs
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -58,9 +58,8 @@ jobs:
         with:
           platforms: arm64
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # One job, one BuildKit builder: the image builds below reuse this compile.
       - name: Build friglet + friglet-ui for both architectures (cargo-zigbuild, no QEMU)
-        env:
-          EXTRA_BUILD_ARGS: --cache-from type=gha,scope=builder --cache-to type=gha,scope=builder,mode=max
         run: scripts/build-binaries.sh
       - name: ELF machine, GLIBC <= 2.36, execute on bookworm (arm64 under QEMU)
         env:
@@ -73,21 +72,7 @@ jobs:
           name: dist
           path: dist/
           retention-days: 14
-
-  image:
-    name: image (amd64 + arm64)
-    # After binaries, so the builder stage comes from its BuildKit cache instead of recompiling.
-    needs: binaries
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
-        with:
-          platforms: arm64
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - name: Build friglet-node:dev-amd64 and friglet-node:dev-arm64
-        env:
-          EXTRA_BUILD_ARGS: --cache-from type=gha,scope=builder
+      - name: Images friglet-node:dev-amd64 and friglet-node:dev-arm64 (runtime stage has no RUN)
         run: scripts/build-image.sh amd64 arm64
       - name: Run the arm64 image under QEMU
         run: |
@@ -99,7 +84,7 @@ jobs:
           for a in amd64 arm64; do
             docker image inspect "friglet-node:dev-$a" --format \
               '{{.Architecture}} user={{.Config.User}} entrypoint={{json .Config.Entrypoint}} volumes={{json .Config.Volumes}} ports={{json .Config.ExposedPorts}} friglet={{index .Config.Labels "dev.blindbit.friglet.commit"}}'
-            test "$(docker image inspect "friglet-node:dev-$a" --format '{{.Config.User}}')" = 1000:1000
+            test "$(docker image inspect "friglet-node:dev-$a" --format '{{.Architecture}} {{.Config.User}}')" = "$a 1000:1000"
           done
       - name: Save images for later jobs
         run: |
@@ -115,7 +100,7 @@ jobs:
 
   quickstart:
     name: compose quickstart (verbatim)
-    needs: image
+    needs: build
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -128,7 +113,7 @@ jobs:
 
   e2e:
     name: regtest end to end (blindbit-testkit)
-    needs: image
+    needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -161,7 +146,7 @@ jobs:
 
   startos:
     name: StartOS .s9pk (x86_64 + aarch64)
-    needs: image
+    needs: build
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
