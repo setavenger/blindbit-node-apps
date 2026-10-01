@@ -26,6 +26,13 @@ agent's, they are settled as follows:
 - **P5** No bundled oracle this round; local-oracle packaging is a follow-up ticket.
 - Pin: blindbit-rs `93f6a92` (`origin/integration`, same as the testkit pin) until BR3 lands.
 
+Tracker ids (project P-SNB-75): M0 SNB-648, M1 SNB-649, M2 SNB-650, M3 SNB-651, M4 SNB-652,
+M5 SNB-653. BR1 SNB-630, BR2 SNB-631, BR3 SNB-632, BR4 SNB-633, BR5 SNB-634, BR6 SNB-635,
+BR7 SNB-636, BR8 SNB-637, BR9 SNB-628, BR10 SNB-623, BR11 SNB-638, BR12 SNB-639, BR13 SNB-640,
+BR14 SNB-641. Maintainer decisions: registry and signing SNB-642, permanent ids SNB-643,
+`upstream/` licensing and visibility SNB-644, oracle operation SNB-645, local oracle SNB-646,
+launch before BR2 SNB-647.
+
 Scope of the first implementation round: M0 in full, and M1-M4 packages built and checked
 with each platform's own tooling. Hardware install tests, Sparrow tests and the release gate
 stay open until they can be run.
