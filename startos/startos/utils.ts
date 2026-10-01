@@ -12,13 +12,14 @@ export const electrumSslPreferredPort = 50032
 export const uiHostId = 'ui'
 export const electrumHostId = 'electrum'
 
-/** Basic-auth user the StartOS proxy accepts in front of the web UI. */
-export const uiUsername = 'friglet'
-/** Realm in the 401 challenge; stable so browsers reuse cached credentials. */
-export const uiRealm = 'friglet'
-
 /** The data directory friglet-ui owns inside every subcontainer (contract: FRIGLET_UI_DATA_DIR). */
 export const dataDir = '/data'
+
+/**
+ * friglet-ui's web UI password file inside the data dir (contract:
+ * FRIGLET_UI_PASSWORD_FILE; `ui-password` is UI credentials, not wallet data).
+ */
+export const uiPasswordFile = `${dataDir}/ui-password`
 
 /** uid:gid the friglet-node image runs as (contract: "runs as uid:gid 1000:1000"). */
 export const frigletUid = 1000
@@ -37,8 +38,10 @@ export const baseEnv = {
   FRIGLET_UI_DATA_DIR: dataDir,
   FRIGLET_UI_NETWORK: 'bitcoin',
   FRIGLET_UI_LISTEN: `0.0.0.0:${uiPort}`,
-  // StartOS's reverse proxy enforces basic auth on every route off the box.
-  FRIGLET_UI_AUTH: 'gateway',
+  // friglet-ui's own login: port 8097 is reachable from other services and
+  // from a LAN marked secure without passing the StartOS proxy.
+  FRIGLET_UI_AUTH: 'password',
+  FRIGLET_UI_PASSWORD_FILE: uiPasswordFile,
   FRIGLET_UI_ELECTRUM_TCP: `0.0.0.0:${electrumPort}`,
   // StartOS terminates TLS for Electrum (addSsl on the electrum binding).
   FRIGLET_UI_ELECTRUM_TLS: 'off',

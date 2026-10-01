@@ -1,4 +1,3 @@
-import { storeJson } from './fileModels/store.json'
 import { i18n } from './i18n'
 import { sdk } from './sdk'
 import {
@@ -7,48 +6,32 @@ import {
   electrumSslPreferredPort,
   uiHostId,
   uiPort,
-  uiRealm,
-  uiUsername,
 } from './utils'
 
 export const setInterfaces = sdk.setupInterfaces(async ({ effects }) => {
   const receipts = []
 
   // Web UI. `protocol: 'http'` publishes plaintext only where StartOS trusts
-  // the path (this server, other services on the bridge); every route off the
-  // box goes through the proxy's TLS, which enforces basic auth before a
-  // request reaches friglet-ui. Re-runs, and swaps the credential, whenever
-  // the stored password changes.
-  const uiPassword = await storeJson.read((s) => s.uiPassword).const(effects)
-  if (uiPassword) {
-    const uiOrigin = await sdk.MultiHost.of(effects, uiHostId).bindPort(
-      uiPort,
-      {
-        protocol: 'http',
-        addSsl: {
-          auth: {
-            type: 'basic',
-            credentials: [{ username: uiUsername, password: uiPassword }],
-            realm: uiRealm,
-          },
-        },
-      },
-    )
-    const ui = sdk.createInterface(effects, {
-      name: i18n('Web UI'),
-      id: 'ui',
-      description: i18n(
-        'Wallet status, scan progress and connection details. Sign in as "friglet" with the password from the Show web UI password action.',
-      ),
-      type: 'ui',
-      masked: false,
-      schemeOverride: null,
-      username: null,
-      path: '',
-      query: {},
-    })
-    receipts.push(await uiOrigin.export([ui]))
-  }
+  // the path (this server, other services on the bridge, a LAN marked
+  // secure); everything else goes through the StartOS proxy's TLS. friglet-ui
+  // runs its own password login on every path (FRIGLET_UI_AUTH=password).
+  const uiOrigin = await sdk.MultiHost.of(effects, uiHostId).bindPort(uiPort, {
+    protocol: 'http',
+  })
+  const ui = sdk.createInterface(effects, {
+    name: i18n('Web UI'),
+    id: 'ui',
+    description: i18n(
+      'Wallet status, scan progress and connection details. Sign in with the password from the Show web UI password action.',
+    ),
+    type: 'ui',
+    masked: false,
+    schemeOverride: null,
+    username: null,
+    path: '',
+    query: {},
+  })
+  receipts.push(await uiOrigin.export([ui]))
 
   // Electrum, the electrs/fulcrum/frigate way: friglet-ui listens in plaintext
   // and StartOS terminates TLS with the server's root CA. `secure: null`

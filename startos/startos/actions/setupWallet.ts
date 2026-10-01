@@ -14,6 +14,7 @@ import {
   TAPROOT_ACTIVATION_HEIGHT,
 } from '../setup/command'
 import { ensureOwnership } from '../setup/ownership'
+import { applyUiPassword } from './uiPassword'
 import { baseEnv, dataDir, frigletGid, frigletUid } from '../utils'
 
 const { InputSpec, Value } = sdk
@@ -154,6 +155,10 @@ export const setupWallet = sdk.Action.withInput(
       .once()
 
     await ensureOwnership(sdk.volumes.main.path, frigletUid, frigletGid)
+    // The setup command gets the daemon's env, FRIGLET_UI_PASSWORD_FILE
+    // included, so make sure that file exists before the first start too.
+    const uiPassword = await storeJson.read((s) => s.uiPassword).once()
+    if (uiPassword) await applyUiPassword(uiPassword)
 
     const invocation = buildSetupInvocation(
       {

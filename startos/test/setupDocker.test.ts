@@ -18,6 +18,7 @@ import {
   type SetupRequest,
 } from '../startos/setup/command.ts'
 import { ensureOwnership } from '../startos/setup/ownership.ts'
+import { writePasswordFile } from '../startos/setup/passwordFile.ts'
 import {
   baseEnv,
   electrumPort,
@@ -26,6 +27,7 @@ import {
   uiPort,
 } from '../startos/utils.ts'
 import { randomDescriptor } from './helpers/descriptor.ts'
+import { randomBytes } from 'node:crypto'
 
 const image = process.env.FRIGLET_NODE_IMAGE
 const skip = image ? false : 'FRIGLET_NODE_IMAGE is not set'
@@ -219,6 +221,23 @@ test(
         '-e',
         `${k}=${v}`,
       ])
+      assert.equal(env.FRIGLET_UI_AUTH, 'password')
+
+      // auth=password without the file: friglet-ui must refuse to start.
+      const noFile = docker([
+        'run',
+        '--rm',
+        '-v',
+        `${dir}:/data`,
+        ...envArgs,
+        image!,
+      ])
+      assert.notEqual(noFile.exitCode, 0, 'started without a password file')
+
+      // What main.ts does before the daemon starts (store -> password file).
+      const pw1 = randomBytes(16).toString('hex')
+      const pwFile = join(dir, 'ui-password')
+      await writePasswordFile(pwFile, pw1, frigletUid, frigletGid)
       const started = docker([
         'run',
         '-d',
@@ -270,14 +289,27 @@ test(
       const h = scanHealth(health.exitCode, status.exitCode, status.stdout)
       assert.ok(['success', 'loading'].includes(h.result), JSON.stringify(h))
 
+      // "Reset web UI password": new file, then a restart picks it up.
+      const pw2 = randomBytes(16).toString('hex')
+      assert.equal(
+        await writePasswordFile(pwFile, pw2, frigletUid, frigletGid),
+        true,
+      )
+      assert.equal(docker(['restart', '-t', '150', name]).exitCode, 0)
+      spawnSync('sleep', ['2'])
+
       const t0 = Date.now()
       const stopped = docker(['stop', '-t', '150', name])
       assert.equal(stopped.exitCode, 0)
       assert.ok(Date.now() - t0 < 150_000)
       const logs = docker(['logs', name])
-      assert.ok(
-        !/spscan1/.test(logs.stdout + logs.stderr),
-        'descriptor in daemon logs',
+      const text = logs.stdout + logs.stderr
+      assert.ok(!/spscan1/.test(text), 'descriptor in daemon logs')
+      assert.ok(!text.includes(pw1) && !text.includes(pw2), 'password in logs')
+      assert.equal(
+        text.match(/password changed/g)?.length,
+        2,
+        'friglet-ui should take the password at first start and after the reset',
       )
     } finally {
       docker(['rm', '-f', name])
