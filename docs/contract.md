@@ -49,16 +49,22 @@ umask 077, `--config <data>/config.toml`, Electrum on `127.0.0.1:50001`, HTTP on
 [--replace] [--dry-run] [--json]`; descriptor from stdin or `--descriptor-file` (0600) only.
 Exit codes: 0 ok, 2 usage, 3 descriptor, 4 birthday, 5 network mismatch, 6 node check,
 7 wallet exists (needs `--replace`), 8 I/O. With a running supervisor it hands the request
-over; otherwise it stages the files under an exclusive `flock` on the data dir and reports
-"staged, verification pending". `--json` prints `{"ok":bool,"code":n,"state":..., "sp_address":...,"message":...}`.
+over (through `<data>/friglet-ui.sock`; the daemon holds the data-dir `flock` for its life);
+otherwise it stages the files under the `flock` and reports "staged, verification pending".
+`--node` is checked only when passed. `--json` prints
+`{"ok":bool,"code":n,"state":str|null,"sp_address":str|null,"key_fingerprint":str,"network":str,"message":str}`
+plus `error_code` (and `field` for codes 3/4/5) on failure. `state` is `"staged"` or
+`"unchanged"` offline, the current state id when handed over, `null` for `--dry-run`/errors.
 
 UI credentials (`ui-password`, the password hash, sessions) and the TLS certificate are not
 wallet data: `forget` and wallet replacement never touch them.
 
 Other subcommands: `friglet-ui password set|reset` (reads stdin, ends all sessions, works while
 the daemon runs),
-`friglet-ui status --json` (state id, heights; exit 0 healthy, 1 attention, 2 not configured),
-`friglet-ui health` (exit 0 only in `scanning`/`up-to-date`; for container healthchecks),
+`friglet-ui status --json` (daemon running: the full `/api/state` document, exit 0 ok/info,
+1 warn/error, 2 needs-setup; daemon down: `{"configured":bool,"running":false,"state":null}`, exit 1, or 2 when unconfigured),
+`friglet-ui health` (exit 0 in `scanning`, `up-to-date`, `rescanning-after-reset`; for container
+healthchecks), `password reset` with empty stdin generates a password and prints it once,
 `friglet-ui --version`, `friglet-ui self-test` (no network; checks the embedded assets and
 crypto, used to prove arm64 binaries execute).
 
