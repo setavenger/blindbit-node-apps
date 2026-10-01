@@ -1,0 +1,5 @@
+#!/bin/sh
+# STUB friglet: the package never runs it directly.
+echo "friglet STUB (no scanner in this image)" >&2
+case "$1" in --version) echo "friglet 0.0.0-stub"; exit 0 ;; esac
+exit 1

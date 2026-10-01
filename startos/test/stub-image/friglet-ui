@@ -1,0 +1,152 @@
+#!/bin/sh
+# STUB friglet-ui (busybox sh). Follows docs/contract.md for the parts the
+# StartOS package uses: `setup`, `status --json`, `health`, the daemon.
+# Never prints the descriptor.
+set -u
+DATA="${FRIGLET_UI_DATA_DIR:-/data}"
+TAPROOT_MAINNET=709632
+
+stray_env() {
+  bad=$(env | sed -n 's/^\(FRIGLET_[A-Za-z0-9_]*\)=.*/\1/p' | grep -v '^FRIGLET_UI_' | head -n1)
+  if [ -n "$bad" ]; then
+    echo "friglet-ui: refusing to start: $bad is set; friglet-ui takes only FRIGLET_UI_* variables" >&2
+    return 0
+  fi
+  return 1
+}
+
+json_str() { # minimal JSON string escaping for our own messages
+  printf '"%s"' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+}
+
+setup_result() { # code state address message
+  if [ "$JSON" = 1 ]; then
+    ok=false; [ "$1" = 0 ] && ok=true
+    st=null; [ -n "$2" ] && st=$(json_str "$2")
+    ad=null; [ -n "$3" ] && ad=$(json_str "$3")
+    printf '{"ok":%s,"code":%s,"state":%s,"sp_address":%s,"message":%s}\n' "$ok" "$1" "$st" "$ad" "$(json_str "$4")"
+  else
+    echo "$4"
+  fi
+  exit "$1"
+}
+
+cmd_setup() {
+  JSON=0; NETWORK="${FRIGLET_UI_NETWORK:-}"; NODE=""; BIRTHDAY=""; DFILE=""; REPLACE=0; DRY=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --network) NETWORK="${2:-}"; shift 2 ;;
+      --node) NODE="${2:-}"; shift 2 ;;
+      --birthday) BIRTHDAY="${2:-}"; shift 2 ;;
+      --descriptor-file) DFILE="${2:-}"; shift 2 ;;
+      --replace) REPLACE=1; shift ;;
+      --dry-run) DRY=1; shift ;;
+      --json) JSON=1; shift ;;
+      *) setup_result 2 "" "" "usage: unknown argument $1" ;;
+    esac
+  done
+  stray_env && setup_result 2 "" "" "usage: stray FRIGLET_* variable"
+  [ -n "$NETWORK" ] || setup_result 2 "" "" "usage: --network is required"
+  case "$NETWORK" in bitcoin|signet|testnet4|regtest) ;; *) setup_result 2 "" "" "usage: unknown network $NETWORK" ;; esac
+  [ -n "$BIRTHDAY" ] || setup_result 2 "" "" "usage: --birthday is required"
+
+  if [ -n "$DFILE" ]; then
+    [ "$(stat -c %a "$DFILE" 2>/dev/null)" = 600 ] || setup_result 3 "" "" "descriptor: --descriptor-file must exist with mode 0600"
+    IFS= read -r DESC < "$DFILE" || true
+  else
+    IFS= read -r DESC || true
+  fi
+  # sp([fp/352h/0h/0h]spscan1q…)?bh=N#checksum, origin/annotation/checksum optional
+  KEY=$(printf '%s' "$DESC" | sed -nE 's/^sp\((\[[0-9a-fA-F]{8}(\/[0-9]+[hH'"'"']?)*\])?(t?spscan1[02-9ac-hj-np-z]{20,})\)(\?bh=[0-9]+)?(#[02-9ac-hj-np-z]{8})?$/\3/p')
+  case "$KEY" in
+    spscan1*) DNET=bitcoin ;;
+    tspscan1*) DNET=test ;;
+    *) setup_result 3 "" "" "descriptor: not a Silent Payments descriptor (expected sp(spscan1...))" ;;
+  esac
+  if [ "$NETWORK" = bitcoin ] && [ "$DNET" != bitcoin ]; then
+    setup_result 5 "" "" "network mismatch: descriptor is for a test network, node is $NETWORK"
+  fi
+  if [ "$NETWORK" != bitcoin ] && [ "$DNET" = bitcoin ]; then
+    setup_result 5 "" "" "network mismatch: descriptor is for mainnet, node is $NETWORK"
+  fi
+
+  printf '%s' "$BIRTHDAY" | grep -Eq '^[0-9]+$' || setup_result 4 "" "" "birthday: not a block height"
+  if [ "$NETWORK" = bitcoin ] && [ "$BIRTHDAY" -lt "$TAPROOT_MAINNET" ]; then
+    setup_result 4 "" "" "birthday: before taproot activation ($TAPROOT_MAINNET)"
+  fi
+
+  if [ -n "$NODE" ]; then
+    host=${NODE%:*}; port=${NODE##*:}
+    printf '%s' "$port" | grep -Eq '^[0-9]+$' || setup_result 2 "" "" "usage: --node must be host:port"
+    timeout 3 nc "$host" "$port" </dev/null >/dev/null 2>&1 \
+      || setup_result 6 "" "" "node check: cannot connect to $NODE"
+  fi
+
+  ADDR="sp1qstub$(printf '%s' "$DESC" | sha256sum | cut -c1-40)"
+  [ "$DRY" = 1 ] && setup_result 0 "valid" "$ADDR" "valid (dry run, nothing written)"
+
+  mkdir -p "$DATA" 2>/dev/null; chmod 700 "$DATA" 2>/dev/null
+  [ -w "$DATA" ] || setup_result 8 "" "" "i/o: data dir $DATA is not writable"
+  exec 9>"$DATA/.lock" || setup_result 8 "" "" "i/o: cannot open lock file"
+  flock -n 9 || setup_result 8 "" "" "i/o: another setup holds the lock"
+
+  NEWSUM=$(printf '%s' "$DESC" | sha256sum | cut -c1-64)
+  if [ -f "$DATA/scan.key" ]; then
+    OLDSUM=$(sha256sum < "$DATA/scan.key" | cut -c1-64)
+    OLDBDAY=$(sed -n 's/^start_height = //p' "$DATA/config.toml" 2>/dev/null)
+    if [ "$OLDSUM" = "$NEWSUM" ] && [ "$OLDBDAY" = "$BIRTHDAY" ]; then
+      setup_result 0 "unchanged" "$ADDR" "same wallet and birthday; nothing to do"
+    fi
+    [ "$REPLACE" = 1 ] || setup_result 7 "" "" "wallet exists: a different wallet is set up; pass --replace"
+    rm -rf "$DATA/prev"; mkdir -m 700 "$DATA/prev" || setup_result 8 "" "" "i/o: cannot create prev/"
+    for f in config.toml scan.key scanner_state.json; do
+      [ -e "$DATA/$f" ] && { mv "$DATA/$f" "$DATA/prev/$f" || setup_result 8 "" "" "i/o: cannot snapshot $f"; }
+    done
+  fi
+
+  umask 077
+  { printf '%s' "$DESC" > "$DATA/.scan.key.tmp" && mv "$DATA/.scan.key.tmp" "$DATA/scan.key"; } \
+    || setup_result 8 "" "" "i/o: cannot write scan.key"
+  { printf 'network = "%s"\nstart_height = %s\nstaged = true\n' "$NETWORK" "$BIRTHDAY" > "$DATA/.config.toml.tmp" \
+      && mv "$DATA/.config.toml.tmp" "$DATA/config.toml"; } \
+    || setup_result 8 "" "" "i/o: cannot write config.toml"
+  setup_result 0 "staged" "$ADDR" "staged, verification pending"
+}
+
+cmd_status() {
+  if [ ! -f "$DATA/scan.key" ]; then
+    echo '{"state":{"id":"needs-setup","headline":"No wallet set up (STUB)"},"heights":{"scanned":null,"node_tip":null}}'
+    exit 2
+  fi
+  b=$(sed -n 's/^start_height = //p' "$DATA/config.toml")
+  printf '{"state":{"id":"scanning","headline":"Scanning (STUB)"},"heights":{"birthday":%s,"scanned":%s,"node_tip":%s}}\n' "$b" "$b" "$((b + 100))"
+  exit 0
+}
+
+cmd_health() { [ -f "$DATA/scan.key" ] && exit 0; exit 1; }
+
+cmd_run() {
+  stray_env && exit 2
+  [ -n "${FRIGLET_UI_NETWORK:-}" ] || { echo "friglet-ui: FRIGLET_UI_NETWORK is required" >&2; exit 2; }
+  [ -n "${FRIGLET_UI_NODE:-}" ] || { echo "friglet-ui: FRIGLET_UI_NODE is required" >&2; exit 2; }
+  listen="${FRIGLET_UI_LISTEN:-0.0.0.0:8097}"
+  echo "friglet-ui STUB: web UI on $listen, network $FRIGLET_UI_NETWORK, node $FRIGLET_UI_NODE, auth ${FRIGLET_UI_AUTH:-password}"
+  httpd -f -p "$listen" -h /usr/share/friglet-ui-stub/www & ui=$!
+  el=""
+  if [ -f "$DATA/scan.key" ] && [ "${FRIGLET_UI_ELECTRUM_TCP:-}" != off ]; then
+    echo "friglet-ui STUB: Electrum placeholder on ${FRIGLET_UI_ELECTRUM_TCP:-0.0.0.0:50031}"
+    httpd -f -p "${FRIGLET_UI_ELECTRUM_TCP:-0.0.0.0:50031}" -h /usr/share/friglet-ui-stub/www & el=$!
+  fi
+  trap 'echo "friglet-ui STUB: SIGTERM, stopping"; kill $ui $el 2>/dev/null; exit 0' TERM INT
+  while :; do sleep 1 & wait $!; done
+}
+
+case "${1:-run}" in
+  --version) echo "friglet-ui 0.0.0-stub" ;;
+  self-test) echo "self-test: STUB ok" ;;
+  setup) shift; cmd_setup "$@" ;;
+  status) cmd_status ;;
+  health) cmd_health ;;
+  run) cmd_run ;;
+  *) echo "friglet-ui STUB: unknown command $1" >&2; exit 2 ;;
+esac

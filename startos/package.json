@@ -1,0 +1,31 @@
+{
+  "name": "blindbit-friglet-startos",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "build": "rm -rf ./javascript && ncc build startos/index.ts -o ./javascript",
+    "prettier": "prettier --write startos test",
+    "check": "tsc --noEmit && npm test",
+    "test": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test test/setupCommand.test.ts test/scanHealth.test.ts test/ownership.test.ts",
+    "test:docker": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test test/setupDocker.test.ts"
+  },
+  "dependencies": {
+    "@start9labs/start-sdk": "2.0.9",
+    "bitcoin-core-startos": "github:Start9Labs/bitcoin-core-startos#4ceccce427ae5b17a53a092219fa69d38b781c25"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.17",
+    "@vercel/ncc": "^0.38.4",
+    "prettier": "^3.8.2",
+    "typescript": "^6.0.3"
+  },
+  "prettier": {
+    "trailingComma": "all",
+    "tabWidth": 2,
+    "semi": false,
+    "singleQuote": true
+  },
+  "overrides": {
+    "@start9labs/start-sdk": "$@start9labs/start-sdk"
+  }
+}
