@@ -911,10 +911,7 @@ impl Supervisor {
     }
 
     fn maybe_refresh_node(&mut self) {
-        if self.node_check_running
-            || self.wallet.is_none()
-            || self.shared.cfg.unsupported_network.is_some()
-        {
+        if self.node_check_running || self.shared.cfg.unsupported_network.is_some() {
             return;
         }
         let stale = self.peer_checked.is_none_or(|t| t.elapsed() > NODE_REFRESH);
@@ -924,7 +921,9 @@ impl Supervisor {
             && self
                 .peer_checked
                 .is_some_and(|t| t.elapsed() > Duration::from_secs(60));
-        if !(stale || lagging) || self.child.is_none() {
+        // Before setup the tip bounds the birthday; with a wallet the pre-start handshake
+        // covers the time friglet is not running.
+        if !(stale || lagging) || (self.wallet.is_some() && self.child.is_none()) {
             return;
         }
         self.node_check_running = true;
