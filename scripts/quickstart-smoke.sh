@@ -6,7 +6,8 @@
 #   IMAGE=friglet-node:dev-amd64 scripts/quickstart-smoke.sh
 #
 # The quickstart runs in a temporary copy of compose/ with EDITOR=true, i.e. with the values
-# of .env.example. Its default image name (IMAGE_REPO:<version>) is tagged from IMAGE first.
+# of .env.example. Its default image name (IMAGE_REPO:<version>) is tagged from IMAGE for the
+# run when no such image exists locally, and untagged afterwards.
 set -euo pipefail
 LOG_TAG=quickstart
 # shellcheck source=scripts/lib.sh
@@ -16,7 +17,7 @@ load_pins
 IMAGE=${IMAGE:-friglet-node:dev-$(host_arch)}
 docker image inspect "$IMAGE" >/dev/null 2>&1 || die "image $IMAGE not found (make image)"
 default_image="$IMAGE_REPO:$(version)"
-docker tag "$IMAGE" "$default_image"
+tagged=0
 
 work=$(mktemp -d)
 script=$work/quickstart.sh
@@ -47,9 +48,17 @@ cleanup() {
   [ $rc -ne 0 ] && (cd "$work/compose" && "${shim[@]}" docker compose logs --tail 50 >&2 || true)
   (cd "$work/compose" && "${shim[@]}" docker compose down -v >/dev/null 2>&1 || true)
   rm -rf "$work"
+  if [ "$tagged" = 1 ]; then docker rmi "$default_image" >/dev/null 2>&1 || true; fi
   exit $rc
 }
 trap cleanup EXIT
+
+# Tag the local image with the release name the compose file defaults to; the tag is removed
+# again afterwards unless it already existed (a local stand-in must not linger as "the release").
+if ! docker image inspect "$default_image" >/dev/null 2>&1; then
+  docker tag "$IMAGE" "$default_image"
+  tagged=1
+fi
 
 log "running the quickstart block:"
 sed 's/^/  $ /' "$script" >&2
