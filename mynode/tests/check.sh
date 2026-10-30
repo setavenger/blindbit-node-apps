@@ -56,6 +56,8 @@ step() { echo; echo "=== $*"; }
 record() { if [ "$1" -eq 0 ]; then echo "--> OK"; else echo "--> FAILED"; FAILED+=("$2"); fi; }
 
 step "1. create.py check $APP"
+# Pull first: on a host without the image, docker run's pull progress would land in $out.
+docker pull -q "$PYTHON_IMAGE" >/dev/null
 out=$(docker run --rm -v "$MYNODE":/mynode:ro -w /mynode "$PYTHON_IMAGE" python3 app_sdk/create.py check "$APP" 2>&1)
 rc=$?
 echo "$out"
