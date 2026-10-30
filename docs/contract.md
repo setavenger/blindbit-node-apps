@@ -39,9 +39,11 @@ other `FRIGLET_*` variable in the environment is a fatal startup error naming th
 | `FRIGLET_UI_FRIGLET_BIN` | `/usr/local/bin/friglet` (image), next to `friglet-ui` (native) | daemon binary |
 | `FRIGLET_UI_LOG` | `info` | friglet-ui log level |
 
-friglet itself is always started by friglet-ui with a cleared environment (PATH, HOME, TZ only),
-umask 077, `--config <data>/config.toml`, Electrum on `127.0.0.1:50001`, HTTP on
-`127.0.0.1:8095`, control socket `<data>/friglet.sock`, state file `<data>/scanner_state.json`.
+friglet itself is always started by friglet-ui with a cleared environment (PATH, HOME, TZ, and
+`FRIGLET_LOG_FILE=off` so friglet keeps no unredacted log file of its own), umask 077,
+`--config <data>/config.toml`, Electrum on `127.0.0.1:50001`, control socket
+`<data>/friglet.sock`, state file `<data>/scanner_state.json`. friglet has no HTTP API (removed
+in SNB-668), so friglet-ui writes no `http_addr`.
 
 ## friglet-ui setup CLI
 
@@ -91,4 +93,3 @@ crypto, used to prove arm64 binaries execute).
 | 8098 | friglet-ui over HTTPS via nginx on RaspiBlitz and myNode |
 | 2104 | Umbrel app proxy port |
 | 8337 | RaspiBlitz bitcoind `whitebind=download@127.0.0.1:8337` for friglet (8336 is BTCPay's whitebind on RaspiBlitz; a second bind on it stops bitcoind) |
-| 8095 | friglet HTTP API, loopback only, never published |

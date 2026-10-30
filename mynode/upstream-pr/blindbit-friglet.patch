@@ -135,7 +135,7 @@ index 00000000..5f5f759d
 +        "Uninstalling deletes /mnt/hdd/mynode/blindbit-friglet: the scan key, the wallet settings, the scan progress and the login password."
 +    ],
 +    "linux_user": "bitcoin",
-+    "latest_version": "93f6a92-1",
++    "latest_version": "5dbb16f-1",
 +    "supported_archs": ["aarch64", "x86_64"],
 +    "download_skip": true,
 +    "download_type": "source",
@@ -313,8 +313,8 @@ index 00000000..162fc2d5
 +IMAGE="ghcr.io/setavenger/friglet-node"
 +# "<tag> <image index digest>" for latest_version, from scripts/print_app_download_hashes.sh.
 +# PLACEHOLDER DIGEST: the all-zero digest is not a real image. Replace it with the printed value
-+# once ghcr.io/setavenger/friglet-node:93f6a92-1 is published; until then the pull below fails.
-+IMAGE_DIGEST="93f6a92-1 sha256:0000000000000000000000000000000000000000000000000000000000000000"
++# once ghcr.io/setavenger/friglet-node:5dbb16f-1 is published; until then the pull below fails.
++IMAGE_DIGEST="5dbb16f-1 sha256:0000000000000000000000000000000000000000000000000000000000000000"
 +
 +STORAGE_DIR="${STORAGE_FOLDER:-/mnt/hdd/mynode/blindbit-friglet}"
 +BITCOIN_CONF="/mnt/hdd/mynode/bitcoin/bitcoin.conf"

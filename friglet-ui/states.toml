@@ -180,7 +180,7 @@ detail = "Another program already uses one of friglet's ports, so friglet cannot
 action = { label = "Retry", kind = "post", target = "/api/scan/resume" }
 widget = "Needs attention"
 health = "attention"
-cause = "friglet failed to bind 127.0.0.1:50001 (Electrum), 127.0.0.1:8095 (HTTP) or its control socket, or friglet-ui failed to bind an Electrum listener."
+cause = "friglet failed to bind 127.0.0.1:50001 (Electrum) or its control socket, or friglet-ui failed to bind an Electrum listener."
 fix = "Stop the other program or change its port, then retry."
 anchor = "port-in-use"
 

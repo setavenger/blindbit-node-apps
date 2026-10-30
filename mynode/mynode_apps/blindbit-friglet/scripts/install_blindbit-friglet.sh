@@ -18,8 +18,8 @@ echo "==================== INSTALLING APP ===================="
 IMAGE="ghcr.io/setavenger/friglet-node"
 # "<tag> <image index digest>" for latest_version, from scripts/print_app_download_hashes.sh.
 # PLACEHOLDER DIGEST: the all-zero digest is not a real image. Replace it with the printed value
-# once ghcr.io/setavenger/friglet-node:93f6a92-1 is published; until then the pull below fails.
-IMAGE_DIGEST="93f6a92-1 sha256:0000000000000000000000000000000000000000000000000000000000000000"
+# once ghcr.io/setavenger/friglet-node:5dbb16f-1 is published; until then the pull below fails.
+IMAGE_DIGEST="5dbb16f-1 sha256:0000000000000000000000000000000000000000000000000000000000000000"
 
 STORAGE_DIR="${STORAGE_FOLDER:-/mnt/hdd/mynode/blindbit-friglet}"
 BITCOIN_CONF="/mnt/hdd/mynode/bitcoin/bitcoin.conf"

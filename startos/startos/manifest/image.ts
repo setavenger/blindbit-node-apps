@@ -11,7 +11,7 @@
 // Makefile's `dev-x86` / `dev-arm` targets use `friglet-node:dev-<arch>`.
 // `start-cli s9pk pack` evaluates the manifest once per invocation, so one
 // variable per arch-specific pack is enough.
-export const FRIGLET_NODE_TAG = '93f6a92-1'
+export const FRIGLET_NODE_TAG = '5dbb16f-1'
 export const RELEASE_IMAGE = `ghcr.io/setavenger/friglet-node:${FRIGLET_NODE_TAG}`
 
 export const imageTag = process.env.FRIGLET_NODE_IMAGE || RELEASE_IMAGE

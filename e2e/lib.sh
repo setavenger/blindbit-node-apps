@@ -41,7 +41,8 @@ prepare_testkit() {
 }
 
 # stack ARGS...: the testkit's own scripts/stack.sh for our project. Every published port is
-# random (0) so parallel stacks on one host do not collide.
+# random (0) so parallel stacks on one host do not collide. BBTK_FRIGLET_HTTP_PORT stays while
+# the testkit pin still publishes friglet's old HTTP port (dropped there by SNB-780).
 stack() {
   (
     cd "$TESTKIT_DIR" || exit

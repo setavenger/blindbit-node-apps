@@ -22,8 +22,6 @@ pub mod view;
 pub mod wallet;
 pub mod web;
 
-/// friglet's HTTP API, loopback only (never published).
-pub const FRIGLET_HTTP_ADDR: &str = "127.0.0.1:8095";
 /// friglet's Electrum server, loopback only; friglet-ui's listeners proxy to it.
 pub const FRIGLET_ELECTRUM_ADDR: &str = "127.0.0.1:50001";
 

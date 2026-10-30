@@ -105,7 +105,6 @@ dir, and reaches friglet-ui only through the file and stdin.
 | 8098 | nginx `0.0.0.0` / `[::]` | web UI over HTTPS; ufw allows the LAN only |
 | 50031 | per mode | Electrum plaintext; onion port 50031 |
 | 50032 | per mode | Electrum TLS (friglet-ui's self-signed certificate; fingerprint on its Connect page) |
-| 8095 | 127.0.0.1 | friglet HTTP API, started by friglet-ui, never exposed |
 | 8337 | 127.0.0.1 | bitcoind `download` whitebind for friglet |
 
 "LAN" in ufw means 10.0.0.0/8, 172.16.0.0/12 and 192.168.0.0/16, the ranges `_provision_.sh`

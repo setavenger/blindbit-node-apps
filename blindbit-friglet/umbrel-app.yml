@@ -4,7 +4,7 @@ storage:
   dataRoot: data
 category: bitcoin
 name: Friglet
-version: "93f6a92-1"
+version: "5dbb16f-1"
 tagline: Silent Payments Electrum server for Sparrow, backed by your own node
 icon: https://raw.githubusercontent.com/setavenger/blindbit-rs/93f6a92805b97921087b43e626ce4d3d766a3c36/friglet-tray/icons/icon.png
 description: >-

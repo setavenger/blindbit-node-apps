@@ -8,7 +8,7 @@
 APPID="friglet"
 
 # friglet-node package version: <friglet short commit>-<package revision>
-VERSION="93f6a92-1"
+VERSION="5dbb16f-1"
 
 # Release download location.
 # TODO(release-location): the publishing location of the friglet-node tarballs is not decided

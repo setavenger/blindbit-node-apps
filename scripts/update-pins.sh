@@ -12,7 +12,9 @@
 #    builds use RUST_IMAGE by digest)
 #   any other tracked file     IMAGE_REPO:<version>[@sha256:<IMAGE_DIGEST>] image references,
 #   (outside upstream/ and test fixtures) and FRIGLET_NODE_TAG / FRIGLET_NODE_VERSION = '<version>' (or "")
-#                              assignments, e.g. platform manifests and compose files
+#                              assignments, e.g. platform manifests and compose files; myNode's
+#                              "latest_version": "<version>" and IMAGE_DIGEST="<version> <IMAGE_DIGEST>";
+#                              a line VERSION="<version>" (RaspiBlitz bonus script)
 #   */umbrel-app.yml           version: "<version>"
 set -euo pipefail
 LOG_TAG=pins
@@ -130,13 +132,16 @@ render_refs() {
     -e "s#(${repo_re}):${ver_re}@sha256:[0-9a-f]{64}#\1:${FRIGLET_NODE_VERSION}@${IMAGE_DIGEST}#g" \
     -e "s#(${repo_re}):${ver_re}([^@0-9A-Za-z.-]|\$)#\1:${FRIGLET_NODE_VERSION}\2#g" \
     -e "s#(FRIGLET_NODE_(TAG|VERSION)[[:space:]]*[:=][[:space:]]*['\"])${ver_re}(['\"])#\1${FRIGLET_NODE_VERSION}\3#g" \
+    -e "s#(\"latest_version\"[[:space:]]*:[[:space:]]*\")${ver_re}(\")#\1${FRIGLET_NODE_VERSION}\2#g" \
+    -e "s#(IMAGE_DIGEST=\")${ver_re} sha256:[0-9a-f]{64}(\")#\1${FRIGLET_NODE_VERSION} ${IMAGE_DIGEST}\2#g" \
+    -e "s#^([+]?VERSION=\")${ver_re}(\")#\1${FRIGLET_NODE_VERSION}\2#" \
     "$1"
 }
 while IFS= read -r rel; do
   f=$ROOT/$rel
   case "$rel" in Dockerfile|versions.env|Cargo.lock|*/Cargo.lock) continue ;; esac
   if [ ! -f "$f" ] || ! grep -Iq . "$f"; then continue; fi
-  grep -Eq "${repo_re}:${ver_re}|FRIGLET_NODE_(TAG|VERSION)[[:space:]]*[:=][[:space:]]*['\"]${ver_re}|^version:[[:space:]]*[\"']?${ver_re}" "$f" || continue
+  grep -Eq "${repo_re}:${ver_re}|FRIGLET_NODE_(TAG|VERSION)[[:space:]]*[:=][[:space:]]*['\"]${ver_re}|^version:[[:space:]]*[\"']?${ver_re}|\"latest_version\"[[:space:]]*:[[:space:]]*\"${ver_re}\"|IMAGE_DIGEST=\"${ver_re} |^[+]?VERSION=\"${ver_re}\"" "$f" || continue
   render_refs "$f" > "$tmp/refs"
   apply "$f" "$tmp/refs"
 done < <(git -C "$ROOT" ls-files --cached --others --exclude-standard -- ':!:upstream/**' ':!:build/**' ':!:dist/**' ':!:*/tests/**' ':!:*/test/**' | grep -v '/node_modules/' | sort -u)

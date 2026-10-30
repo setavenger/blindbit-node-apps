@@ -364,7 +364,7 @@ fn staged_setup_is_verified_and_friglet_runs_isolated() {
             .unwrap();
     let mut env: Vec<String> = serde_json::from_value(observed["env"].clone()).unwrap();
     env.sort();
-    assert_eq!(env, ["HOME", "PATH", "TZ"]);
+    assert_eq!(env, ["FRIGLET_LOG_FILE", "HOME", "PATH", "TZ"]);
     assert_eq!(observed["umask"], "77");
     assert_eq!(observed["args"][0], "scan");
     assert_eq!(observed["args"][1], "--config");
@@ -378,7 +378,7 @@ fn staged_setup_is_verified_and_friglet_runs_isolated() {
         "{cfg}"
     );
     assert!(cfg.contains("electrum_addr = \"127.0.0.1:50001\""));
-    assert!(cfg.contains("http_addr = \"127.0.0.1:8095\""));
+    assert!(!cfg.contains("http_addr"), "{cfg}");
     assert!(!cfg.contains(&w.secret_hex));
 
     assert_eq!(d.cli(&["health"]).status.code(), Some(0));

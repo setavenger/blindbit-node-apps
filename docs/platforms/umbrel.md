@@ -54,7 +54,6 @@ Umbrel serves the store from this repository's **default branch**. It checks tha
 | 50031 | Umbrel host, and the Electrum onion | Electrum, **unencrypted** |
 | 50032 | Umbrel host | Electrum over TLS with a self-signed certificate (fingerprint on the Connect page) |
 | 8097 | inside the container only | friglet-ui; the gateway forwards port 2104 here |
-| 8095 | container loopback only | friglet's HTTP API; never published |
 | 8335 | Bitcoin Node app (outbound from Friglet) | the node's whitelisted P2P listener, where Friglet downloads blocks |
 
 The published Electrum ports are fixed on Umbrel. The "Electrum exposure" setting under Advanced

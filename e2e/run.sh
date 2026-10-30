@@ -95,7 +95,6 @@ start_height = $BIRTHDAY
 p2p_node_addr = \"$node_ip:18444\"
 oracle_url = \"http://oracle:7001\"
 electrum_addr = \"0.0.0.0:50031\"
-http_addr = \"127.0.0.1:8095\"
 state_file = \"/data/scanner_state.json\"
 control_socket = \"/data/friglet.sock\"
 key_file = \"/data/scan.key\"

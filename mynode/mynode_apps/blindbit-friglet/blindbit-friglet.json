@@ -20,7 +20,7 @@
         "Uninstalling deletes /mnt/hdd/mynode/blindbit-friglet: the scan key, the wallet settings, the scan progress and the login password."
     ],
     "linux_user": "bitcoin",
-    "latest_version": "93f6a92-1",
+    "latest_version": "5dbb16f-1",
     "supported_archs": ["aarch64", "x86_64"],
     "download_skip": true,
     "download_type": "source",

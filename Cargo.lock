@@ -165,7 +165,7 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 [[package]]
 name = "bdk_sp"
 version = "0.1.0"
-source = "git+https://github.com/setavenger/bdk-sp?rev=783c63c9b59fcbfeb008ff2266913a30cd75c132#783c63c9b59fcbfeb008ff2266913a30cd75c132"
+source = "git+https://github.com/setavenger/bdk-sp?rev=94b72f60b0015793e4db67355bdab8d240eecc00#94b72f60b0015793e4db67355bdab8d240eecc00"
 dependencies = [
  "bitcoin",
 ]
@@ -432,8 +432,9 @@ dependencies = [
 [[package]]
 name = "friglet-ipc"
 version = "0.1.0"
-source = "git+https://github.com/setavenger/blindbit-rs.git?rev=93f6a92805b97921087b43e626ce4d3d766a3c36#93f6a92805b97921087b43e626ce4d3d766a3c36"
+source = "git+https://github.com/setavenger/blindbit-rs.git?rev=5dbb16f82dd2add19fa78ce5ff04765c0f5005d9#5dbb16f82dd2add19fa78ce5ff04765c0f5005d9"
 dependencies = [
+ "bitcoin",
  "dirs",
  "interprocess",
  "serde",
