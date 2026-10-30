@@ -27,7 +27,14 @@ readelf_() {
 # version_le A B: A <= B for dotted versions.
 version_le() { [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -n1)" = "$1" ]; }
 
-can_run() { docker run --rm --platform "linux/$1" "$RUNTIME_IMAGE" true >/dev/null 2>&1; }
+# can_run ARCH: this host runs linux/ARCH containers; when not, $why holds docker's answer.
+# The ARCH variant is pulled first: with Docker's classic image store (CI), the amd64 copy
+# already pulled under the same digest makes `docker run --platform linux/arm64` fail instead
+# of pulling.
+can_run() {
+  why=$(docker pull -q --platform "linux/$1" "$RUNTIME_IMAGE" 2>&1) &&
+    why=$(docker run --rm --platform "linux/$1" "$RUNTIME_IMAGE" true 2>&1)
+}
 
 rc=0
 for a in amd64 arm64; do
@@ -54,7 +61,7 @@ for a in amd64 arm64; do
       fi
     done
   elif [ "${REQUIRE_ARM64_EXEC:-0}" = 1 ]; then
-    log "cannot run linux/$a containers here (no QEMU binfmt?)"
+    log "cannot run linux/$a containers here (no QEMU binfmt?): $why"
     rc=1
   else
     log "skipping execution of linux/$a (this host cannot run it; CI runs it under QEMU)"
