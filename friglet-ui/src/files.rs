@@ -19,6 +19,13 @@ pub const KEY_FILE: &str = "scan.key";
 pub const STATE_FILE: &str = "scanner_state.json";
 /// friglet's block-header sidecar (`blockheader::sidecar_path`: `with_extension("headers.json")`).
 pub const HEADERS_FILE: &str = "scanner_state.headers.json";
+/// friglet's record of the lowest birthday the state was scanned from (`with_extension("birthday.json")`).
+pub const BIRTHDAY_FILE: &str = "scanner_state.birthday.json";
+/// Transactions broadcast through friglet's Electrum server, until they confirm
+/// (`with_extension("pending.json")`).
+pub const PENDING_FILE: &str = "scanner_state.pending.json";
+/// Where friglet moves a state file it could not restore (embeds the scan secret).
+pub const UNREADABLE_STATE_PREFIX: &str = "scanner_state.json.unreadable-";
 pub const LKG_FILE: &str = "scanner_state.json.lkg";
 pub const UPGRADE_BACKUP_PREFIX: &str = "scanner_state.json.upgrade-";
 pub const WALLET_FILE: &str = "wallet.json";
@@ -48,8 +55,15 @@ pub const RESERVED_UI_FILES: [&str; 6] = [
 ];
 
 /// Files copied into `prev/` by a wallet change, and restored from it.
-pub const SNAPSHOT_FILES: [&str; 5] =
-    [CONFIG_FILE, KEY_FILE, STATE_FILE, HEADERS_FILE, WALLET_FILE];
+pub const SNAPSHOT_FILES: [&str; 7] = [
+    CONFIG_FILE,
+    KEY_FILE,
+    STATE_FILE,
+    HEADERS_FILE,
+    BIRTHDAY_FILE,
+    PENDING_FILE,
+    WALLET_FILE,
+];
 
 #[derive(Debug, Clone)]
 pub struct DataDir {
@@ -149,17 +163,35 @@ impl DataDir {
     /// - `config.toml`: friglet config (spend public key, birthday, peer).
     /// - `scanner_state.json`: friglet state; blindbit-lib embeds the scan secret in it.
     /// - `scanner_state.headers.json`: block headers friglet fetched for this wallet.
+    /// - `scanner_state.birthday.json`, `scanner_state.pending.json`: friglet's birthday record
+    ///   and the transactions broadcast through its Electrum server.
     /// - `scanner_state.json.lkg`, `scanner_state.json.upgrade-*`: state copies.
+    /// - `scanner_state.json.bak`, `scanner_state.json.unreadable-*`, `*.tmp`: state friglet set
+    ///   aside (birthday moved back, unreadable file) or is writing.
     /// - `wallet.json`: address, fingerprint, birthday.
     /// - `intent.json`: an unfinished wallet change.
     /// - `prev/`, `prev.tmp/`: the previous wallet's snapshot.
     /// - `.tmp-*`: leftovers of interrupted atomic writes (may hold any of the above).
     pub fn wallet_inventory(&self) -> io::Result<Vec<InventoryItem>> {
-        let fixed: [(&str, &'static str); 8] = [
+        let fixed: [(&str, &'static str); 13] = [
             (KEY_FILE, "scan secret"),
             (CONFIG_FILE, "friglet config"),
             (STATE_FILE, "friglet scanner state (embeds the scan secret)"),
             (HEADERS_FILE, "friglet header cache"),
+            (BIRTHDAY_FILE, "friglet birthday record"),
+            (PENDING_FILE, "friglet unconfirmed broadcasts"),
+            (
+                "scanner_state.pending.json.tmp",
+                "friglet unconfirmed broadcasts temp file",
+            ),
+            (
+                "scanner_state.json.tmp",
+                "friglet scanner state temp file (embeds the scan secret)",
+            ),
+            (
+                "scanner_state.json.bak",
+                "scanner state set aside for a rescan (embeds the scan secret)",
+            ),
             (LKG_FILE, "last-known-good scanner state"),
             (WALLET_FILE, "wallet identity"),
             (INTENT_FILE, "wallet change intent"),
@@ -197,6 +229,12 @@ impl DataDir {
                     out.push(InventoryItem {
                         path: entry.path(),
                         what: "scanner state upgrade backup",
+                        is_dir: false,
+                    });
+                } else if name.starts_with(UNREADABLE_STATE_PREFIX) {
+                    out.push(InventoryItem {
+                        path: entry.path(),
+                        what: "unreadable scanner state set aside (embeds the scan secret)",
                         is_dir: false,
                     });
                 } else if name.starts_with(TMP_PREFIX) {
@@ -410,6 +448,12 @@ mod tests {
             HEADERS_FILE,
             WALLET_FILE,
             INTENT_FILE,
+            BIRTHDAY_FILE,
+            PENDING_FILE,
+            "scanner_state.pending.json.tmp",
+            "scanner_state.json.tmp",
+            "scanner_state.json.bak",
+            "scanner_state.json.unreadable-1790000000",
             "scanner_state.json.upgrade-93f6a92",
             ".tmp-scan.key-1-2",
         ] {
@@ -425,7 +469,7 @@ mod tests {
 
         assert!(!dir_contains(dd.root(), secret).unwrap().is_empty());
         let removed = dd.forget().unwrap();
-        assert_eq!(removed.len(), 11);
+        assert_eq!(removed.len(), 17);
         assert!(dir_contains(dd.root(), secret).unwrap().is_empty());
         for name in RESERVED_UI_FILES {
             assert!(dd.path(name).exists(), "{name} survives forget");

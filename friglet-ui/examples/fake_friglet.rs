@@ -2,12 +2,12 @@
 //!
 //! It is started exactly like friglet (`fake_friglet scan --config <file>`), reads the same
 //! config and key file, serves the friglet-ipc control socket and writes a state file. Its
-//! behaviour comes from `<data>/fake-mode` (the environment is cleared by friglet-ui):
+//! behaviour comes from `<data>/fake-mode` (friglet-ui clears the environment):
 //!
 //! - `ok`: scan from the birthday to birthday+20, then stay up to date;
 //! - `mismatch`: report another wallet's `sp_address`;
 //! - `exit1`: print friglet's oracle-down error and exit 1;
-//! - `port`: print friglet's HTTP bind panic and abort;
+//! - `port`: print friglet's Electrum bind failure and exit 1;
 //! - `stop-scan`: the scan task stops after one second until `Start` arrives.
 //!
 //! It records what it saw in `<data>/fake-observed.json` and appends events to
@@ -79,15 +79,19 @@ async fn main() {
 
     match mode.as_str() {
         "exit1" => {
-            eprintln!("Error: transport error");
+            println!(
+                "2026-10-01T12:00:00.000000Z ERROR friglet exited with an error: transport error"
+            );
             std::process::exit(1);
         }
         "port" => {
-            eprintln!("thread 'main' (1) panicked at friglet/src/main.rs:218:14:");
-            eprintln!(
-                "Failed to bind HTTP server: Os {{ code: 98, kind: AddrInUse, message: \"Address already in use\" }}"
+            println!(
+                "2026-10-01T12:00:00.000000Z ERROR Electrum server terminated with error error=Address already in use (os error 98)"
             );
-            std::process::abort();
+            println!(
+                "2026-10-01T12:00:00.000000Z ERROR friglet exited with an error: Electrum server stopped"
+            );
+            std::process::exit(1);
         }
         _ => {}
     }
@@ -193,6 +197,7 @@ async fn main() {
                                     label_addresses: vec![],
                                     version: "fake".into(),
                                     spawned_by_tray: false,
+                                    ..StatusInfo::default()
                                 })
                             }
                             Request::Start => {

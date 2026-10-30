@@ -1,10 +1,11 @@
 //! Classify friglet failures into UI failure classes.
 //!
-//! At the friglet pin `GetStatus.last_error` is never filled (the scan loop logs and retries
-//! or panics), so classification reads, in order: `last_error` when present, then the raw
-//! log ring (stdout logs, stderr `Error:` lines and panic messages), then the exit status.
-//! The strings matched here are the ones friglet/blindbit-lib/bitcoin-p2p print at the pin
-//! (see the golden lines in the tests).
+//! At the friglet pin `GetStatus.last_error` is only filled when the scan task ends with an
+//! error (the scan loop logs and retries), so classification reads, in order: `last_error`
+//! when present, then the raw log ring (stdout logs, including friglet's fatal
+//! `friglet exited with an error: …` line, and panic messages), then the exit status.
+//! The strings matched here are the ones friglet/blindbit-lib print at the pin (see the
+//! golden lines in the tests).
 
 use crate::states::Failure;
 
@@ -28,8 +29,9 @@ pub fn classify_exit(exit: ExitKind, lines: &[String]) -> Failure {
     }
     let recent = |needle: &str| lines.iter().rev().take(60).any(|l| l.contains(needle));
     match exit {
-        ExitKind::Code(1) if recent("Error: transport error") => Failure::OracleUnreachable,
-        ExitKind::Code(1) if recent("Error: Oracle URL") => Failure::Unknown,
+        ExitKind::Code(1) if recent("friglet exited with an error: transport error") => {
+            Failure::OracleUnreachable
+        }
         ExitKind::Signal(6) | ExitKind::Code(134) => {
             if recent("panicked at") && (recent("scanning.rs") || recent("Status {")) {
                 Failure::OracleDropped
@@ -45,9 +47,6 @@ pub fn classify_exit(exit: ExitKind, lines: &[String]) -> Failure {
 pub fn port_in_use(lines: &[String]) -> Option<&'static str> {
     for l in lines.iter().rev().take(80) {
         let addr_in_use = l.contains("Address already in use") || l.contains("AddrInUse");
-        if l.contains("Failed to bind HTTP server") && addr_in_use {
-            return Some("friglet HTTP 127.0.0.1:8095");
-        }
         if l.contains("Electrum server terminated with error") && addr_in_use {
             return Some("friglet Electrum 127.0.0.1:50001");
         }
@@ -61,7 +60,7 @@ pub fn port_in_use(lines: &[String]) -> Option<&'static str> {
 /// Kind of scan-time trouble friglet reported in its logs while it keeps running.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LogCondition {
-    /// `failed to reach oracle, will retry`.
+    /// `failed to reach oracle, will retry`, or a scan stopped by the oracle's block stream.
     OracleRetrying,
     /// P2P trouble while fetching blocks; `height` is the block it asked for, when known.
     P2p {
@@ -76,7 +75,7 @@ pub enum LogCondition {
 pub enum P2pTrouble {
     /// Could not open a connection.
     Connect,
-    /// notfound / rejected / peer closed / 90 s timeout: the peer lacks or withholds the block.
+    /// notfound / peer closed / no answer / broken: the peer lacks or withholds the block.
     BlockUnavailable,
 }
 
@@ -88,29 +87,43 @@ pub fn classify_line(line: &str) -> Option<LogCondition> {
     if line.contains("scan progress") || line.contains("balance after scan") {
         return Some(LogCondition::Progress);
     }
-    let height = field_u64(line, "height=");
-    if line.contains("failed to open P2P connection") {
+    // One line per failed download attempt: `height=N … failure=<FetchFailure>`.
+    if line.contains("block fetch attempt failed") {
+        let failure = line.split_once("failure=").map_or("", |(_, f)| f);
+        let kind = if [
+            "cannot connect",
+            "handshake failed",
+            "peer is a",
+            "peer does not speak",
+        ]
+        .iter()
+        .any(|n| failure.starts_with(n))
+        {
+            P2pTrouble::Connect
+        } else {
+            P2pTrouble::BlockUnavailable
+        };
         return Some(LogCondition::P2p {
-            kind: P2pTrouble::Connect,
-            height,
+            kind,
+            height: field_u64(line, "height="),
         });
     }
-    let unavailable = [
-        "replied notfound for block",
-        "rejected getdata for block",
-        "peer closed the connection",
-        "gave up waiting for block",
-        "still waiting for block",
-        "block fetch failed",
-    ];
-    if unavailable.iter().any(|n| line.contains(n)) {
+    if line.contains("still waiting for block") {
         return Some(LogCondition::P2p {
             kind: P2pTrouble::BlockUnavailable,
-            height,
+            height: None,
         });
     }
     if line.contains("scan_block_range failed") {
-        let kind = if line.contains("Connection refused")
+        // The oracle's block stream failed (blindbit-lib `ScanStopped`).
+        if line.contains("error=scan stopped at height") {
+            return Some(LogCondition::OracleRetrying);
+        }
+        // The node did not deliver a block (blindbit-lib `BlockFetchError`):
+        // `cannot get block N (<hash>) from your node <peer>: <why>`.
+        let kind = if line.contains(": cannot connect (")
+            || line.contains("handshake failed")
+            || line.contains("Connection refused")
             || line.contains("connection timed out")
             || line.contains("No route to host")
             || line.contains("Network is unreachable")
@@ -119,6 +132,7 @@ pub fn classify_line(line: &str) -> Option<LogCondition> {
         } else {
             P2pTrouble::BlockUnavailable
         };
+        let height = field_u64(line, "cannot get block ");
         return Some(LogCondition::P2p { kind, height });
     }
     None
@@ -174,17 +188,19 @@ mod tests {
         v.iter().map(|s| s.to_string()).collect()
     }
 
-    // Golden lines: exact text friglet prints at the pin (blindbit-rs 93f6a92).
-    const ORACLE_DOWN_AT_START: &str = "Error: transport error";
-    const HTTP_PORT_TAKEN: &str = "Failed to bind HTTP server: Os { code: 98, kind: AddrInUse, message: \"Address already in use\" }";
+    // Golden lines: exact text friglet prints at the pin (blindbit-rs 5dbb16f).
+    const ORACLE_DOWN_AT_START: &str =
+        "2026-10-01T12:00:00.000000Z ERROR friglet exited with an error: transport error";
     const ELECTRUM_PORT_TAKEN: &str = "2026-10-01T12:00:00.000000Z ERROR Electrum server terminated with error error=Address already in use (os error 98)";
     const STREAM_PANIC_1: &str =
         "thread 'tokio-runtime-worker' panicked at blindbit-lib/src/scanner/scanning.rs:95:66:";
     const STREAM_PANIC_2: &str = "called `Result::unwrap()` on an `Err` value: Status { code: Unknown, message: \"h2 protocol error\", source: None }";
     const ORACLE_RETRY: &str = "2026-10-01T12:00:00.000000Z ERROR failed to reach oracle, will retry error=status: 'The service is currently unavailable', self: \"tcp connect error\"";
-    const P2P_OPEN_FAIL: &str = "2026-10-01T12:00:00.000000Z  WARN failed to open P2P connection peer=10.0.0.1:8333 attempt=1 error=Connection refused (os error 111)";
-    const NOTFOUND: &str = "2026-10-01T12:00:00.000000Z  WARN block fetch failed; dropping connection and retrying peer=10.0.0.1:8333 height=900100 block_hash=00 attempt=1 max_attempts=4 error=peer 10.0.0.1:8333 replied notfound for block 00 (1 inv item(s)) — peer may be pruned or not serving this block";
-    const GAVE_UP: &str = "2026-10-01T12:00:00.000000Z ERROR scan_block_range failed, will retry on next poll error=gave up waiting for block 00 from 10.0.0.1:8333 after 90.1s";
+    const P2P_OPEN_FAIL: &str = "2026-10-01T12:00:00.000000Z  WARN block fetch attempt failed peer=10.0.0.1:8333 height=900100 block_hash=00 attempt=1 max_attempts=4 failure=cannot connect: Connection refused (os error 111)";
+    const NOTFOUND: &str = "2026-10-01T12:00:00.000000Z  WARN block fetch attempt failed peer=10.0.0.1:8333 height=900100 block_hash=00 attempt=1 max_attempts=4 failure=peer answered notfound";
+    const GAVE_UP: &str = "2026-10-01T12:00:00.000000Z ERROR scan_block_range failed, will retry on next poll error=cannot get block 900100 (00) from your node 10.0.0.1:8333: the node did not send the block within 1 min 30 s and gave no reason, which is what Bitcoin Core does for a block it does not have. It is probably pruned below this height or not fully synced. Scanning needs an unpruned (prune=0), fully synced bitcoin node.";
+    const CONNECT_GAVE_UP: &str = "2026-10-01T12:00:00.000000Z ERROR scan_block_range failed, will retry on next poll error=cannot get block 900100 (00) from your node 10.0.0.1:8333: cannot connect (Connection refused (os error 111)) (all 4 tries). Check that bitcoind is running and accepts P2P connections on that address (listen=1, and bind= if set), that no firewall blocks it, and that p2p_node_addr is right (the bitcoin P2P port is usually 8333).";
+    const ORACLE_STREAM_STOPPED: &str = "2026-10-01T12:00:00.000000Z ERROR scan_block_range failed, will retry on next poll error=scan stopped at height 900100: oracle stream error Unknown: h2 protocol error; nothing from height 900100 on was scanned, rescan from height 900100";
     const PROGRESS: &str = "2026-10-01T12:00:00.000000Z  INFO scan progress height=900100 scanned=100 total=200 pct=50";
 
     #[test]
@@ -195,18 +211,21 @@ mod tests {
         );
         assert_eq!(
             classify_exit(
-                ExitKind::Signal(6),
+                ExitKind::Code(1),
                 &lines(&[
-                    "thread 'main' panicked at friglet/src/main.rs:218:14:",
-                    HTTP_PORT_TAKEN
+                    "x",
+                    "2026-10-01T12:00:00.000000Z ERROR friglet exited with an error: Oracle URL must start with http:// or https://"
                 ])
             ),
-            Failure::PortInUse
+            Failure::Unknown
         );
         assert_eq!(
             classify_exit(
                 ExitKind::Code(0),
-                &lines(&[ELECTRUM_PORT_TAKEN, "INFO Electrum server stopped"])
+                &lines(&[
+                    ELECTRUM_PORT_TAKEN,
+                    "2026-10-01T12:00:00.000000Z ERROR friglet exited with an error: Electrum server stopped"
+                ])
             ),
             Failure::PortInUse
         );
@@ -248,7 +267,7 @@ mod tests {
             classify_line(P2P_OPEN_FAIL),
             Some(LogCondition::P2p {
                 kind: P2pTrouble::Connect,
-                height: None
+                height: Some(900_100)
             })
         );
         assert_eq!(
@@ -258,15 +277,28 @@ mod tests {
                 height: Some(900_100)
             })
         );
-        assert!(matches!(
+        assert_eq!(
             classify_line(GAVE_UP),
             Some(LogCondition::P2p {
                 kind: P2pTrouble::BlockUnavailable,
-                ..
+                height: Some(900_100)
             })
-        ));
+        );
         assert_eq!(
-            classify_line("INFO HTTP server listening addr=127.0.0.1:8095"),
+            classify_line(CONNECT_GAVE_UP),
+            Some(LogCondition::P2p {
+                kind: P2pTrouble::Connect,
+                height: Some(900_100)
+            })
+        );
+        assert_eq!(
+            classify_line(ORACLE_STREAM_STOPPED),
+            Some(LogCondition::OracleRetrying)
+        );
+        assert_eq!(
+            classify_line(
+                "2026-10-01T12:00:00.000000Z  INFO control socket listening path=/data/friglet.sock"
+            ),
             None
         );
     }

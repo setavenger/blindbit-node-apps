@@ -495,6 +495,9 @@ impl Supervisor {
                 "TZ",
                 std::env::var("TZ").unwrap_or_else(|_| "UTC".to_string()),
             )
+            // friglet's own log file (`$HOME/.local/state/friglet/friglet.log`) would keep an
+            // unredacted copy of what friglet-ui redacts before forwarding.
+            .env("FRIGLET_LOG_FILE", "off")
             .current_dir(dd.root())
             .stdin(Stdio::null())
             .stdout(Stdio::piped())

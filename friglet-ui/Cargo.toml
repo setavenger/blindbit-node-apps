@@ -14,7 +14,7 @@ path = "src/main.rs"
 [dependencies]
 # Control-socket protocol of friglet, at the friglet pin (BLINDBIT_RS_REV in versions.env;
 # a unit test fails when the two differ).
-friglet-ipc = { git = "https://github.com/setavenger/blindbit-rs.git", rev = "93f6a92805b97921087b43e626ce4d3d766a3c36" }
+friglet-ipc = { git = "https://github.com/setavenger/blindbit-rs.git", rev = "5dbb16f82dd2add19fa78ce5ff04765c0f5005d9" }
 
 anyhow = "1"
 argon2 = { version = "0.5", features = ["std"] }
@@ -41,5 +41,5 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 [dev-dependencies]
 # friglet's own address derivation (bdk_sp at the rev friglet's Cargo.lock pins), used to
 # check that friglet-ui derives the same `sp_address` string friglet reports.
-bdk_sp = { git = "https://github.com/setavenger/bdk-sp", rev = "783c63c9b59fcbfeb008ff2266913a30cd75c132" }
+bdk_sp = { git = "https://github.com/setavenger/bdk-sp", rev = "94b72f60b0015793e4db67355bdab8d240eecc00" }
 tempfile = "3"

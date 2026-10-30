@@ -133,7 +133,7 @@ friglet-ui could not complete a P2P handshake with your node. It re-resolves the
 Another program already uses one of friglet's ports, so friglet cannot start.
 
 - Severity: error (permanent).
-- How friglet-ui detects it: friglet failed to bind 127.0.0.1:50001 (Electrum), 127.0.0.1:8095 (HTTP) or its control socket, or friglet-ui failed to bind an Electrum listener.
+- How friglet-ui detects it: friglet failed to bind 127.0.0.1:50001 (Electrum) or its control socket, or friglet-ui failed to bind an Electrum listener.
 - Fix: Stop the other program or change its port, then retry.
 - Offered action: Retry.
 

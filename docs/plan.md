@@ -24,7 +24,8 @@ agent's, they are settled as follows:
 - **TD5** `FRIGLET_UI_AUTH=none` allowed on compose with a warning and banner. Accepted.
 - **TD6** Umbrel relies on its gateway login. Accepted.
 - **P5** No bundled oracle this round; local-oracle packaging is a follow-up ticket.
-- Pin: blindbit-rs `93f6a92` (`origin/integration`, same as the testkit pin) until BR3 lands.
+- Pin: blindbit-rs `5dbb16f` (`master` on 2026-10-30, after the Friglet Deslop cleanup);
+  `93f6a92` (`origin/integration`, the testkit pin) before that.
 
 Tracker ids (project P-SNB-75): M0 SNB-648, M1 SNB-649, M2 SNB-650, M3 SNB-651, M4 SNB-652,
 M5 SNB-653. BR1 SNB-630, BR2 SNB-631, BR3 SNB-632, BR4 SNB-633, BR5 SNB-634, BR6 SNB-635,
@@ -75,11 +76,11 @@ From the friglet survey (blindbit-rs @ `611a877`, testkit pin `93f6a92`):
   ignored when the state file was made with another key (`friglet/src/control/mod.rs:10-17,380-390`).
   A wallet change therefore means: stop, fresh state file, restart.
 - It serves no web UI. Status comes from the control socket (`GetStatus`, newline-delimited
-  JSON, unversioned), which never waits on the scanner; the HTTP API hangs for as long as
-  scanning is enabled. `GetStatus.last_error` is filled when the scan task ends with an error
-  (`friglet/src/supervisor.rs:60-64`), and the process then keeps serving stale Electrum data
-  without rescanning; `Start` and `Stop` requests exist. `scan_progress` covers only the
-  current range. Failures before the socket exists, and panics, are visible only in logs.
+  JSON, unversioned), which never waits on the scanner; the HTTP API hung for as long as
+  scanning was enabled (removed since, SNB-668). `GetStatus.last_error` is filled when the
+  scan task ends with an error (`friglet/src/supervisor.rs:60-64`), and the process then keeps
+  serving stale Electrum data without rescanning; `Start` and `Stop` requests exist.
+  `scan_progress` covers only the current range. Failures before the socket exists, and panics, are visible only in logs.
 - Default state file lands outside `/data` in the upstream image (bug); we always set an
   absolute `state_file`. The state file embeds the scan secret in plaintext (mode 0600) and is
   rewritten non-atomically; a corrupt file silently triggers a full rescan.
@@ -150,7 +151,7 @@ binaries:
   as the `ui` interface, with "Change wallet" pointing back to the action. Electrum uses the
   electrs/fulcrum/frigate pattern (`type: 'api'` with `schemeOverride` ssl/tcp, `addSsl` on the
   bound port); StartOS terminates TLS, so wallets see `ssl://` and must trust the server root CA. Bitcoin dependency asks for `prune=0` via a task. Health check is the
-  Electrum port, not HTTP `/height` (blocks during scans).
+  Electrum port (friglet has no HTTP API since SNB-668).
 - `raspiblitz/`: `bonus.friglet.sh` (status/menu/install/on/off/update), systemd unit,
   installs the signed binary release; setup via `friglet-ui` behind the RaspiBlitz nginx;
   the SSH menu shows the UI URL, the generated UI password, status and a password reset.
@@ -161,10 +162,11 @@ binaries:
   `.env.example` ships next to the compose file and CI runs the quickstart exactly as written.
 
 Shared defaults across platforms: Electrum port **50031** inside and outside (free in every
-pulled platform tree; 50001 belongs to electrs/Fulcrum, 50011 to Frigate), friglet HTTP API on
-`127.0.0.1:8095` (8080 is LND REST on RaspiBlitz and JoinMarket on myNode; friglet-ui never
-uses it), `oracle_url` written explicitly per network (mainnet `https://oracle.setor.dev`,
-signet `https://signet.oracle.setor.dev`) and shown in the UI as a third-party service.
+pulled platform tree; 50001 belongs to electrs/Fulcrum, 50011 to Frigate), no friglet HTTP port
+(SNB-668 removed friglet's HTTP API; until then friglet-ui parked it on `127.0.0.1:8095`,
+because 8080 is LND REST on RaspiBlitz and JoinMarket on myNode), `oracle_url` written
+explicitly per network (mainnet `https://oracle.setor.dev`, signet
+`https://signet.oracle.setor.dev`) and shown in the UI as a third-party service.
 
 Pinned versions live in one file, `versions.env` (blindbit-rs commit, Rust toolchain,
 cargo-zigbuild, zig, protoc, base image digests, blindbit-testkit commit, and the platform tools:
@@ -333,13 +335,13 @@ build `dev` in the UI and diagnostics.
   platform, synced unpruned node, pinned Sparrow version. Timings are recorded in
   `docs/performance.md`.
 - Ports and paths (verified free only by grep of the pulled trees): Electrum 50031, TLS 50032
-  (RaspiBlitz nginx stream), friglet HTTP `127.0.0.1:8095`, friglet-ui 8097 (container; loopback
+  (RaspiBlitz nginx stream), friglet-ui 8097 (container; loopback
   on native installs), RaspiBlitz and myNode HTTPS for friglet-ui 8098 through nginx, Umbrel
   manifest port 2104, RaspiBlitz P2P whitebind `download@127.0.0.1:8337` (8336 superseded: BTCPay uses it on RaspiBlitz); control socket, config,
   key and state files under the platform data dir (`/data` in the image). Each README carries the
   table for its platform.
 - Environment isolation: friglet-ui starts friglet with a cleared environment plus an allowlist
-  (PATH, HOME, TZ) and an explicit `--config`, and refuses to start, naming the variable, when any
+  (PATH, HOME, TZ; and `FRIGLET_LOG_FILE=off`) and an explicit `--config`, and refuses to start, naming the variable, when any
   `FRIGLET_*` variable other than `FRIGLET_UI_*` is set. Unit-tested.
 - `friglet-ui setup` contract: descriptor only from stdin or `--descriptor-file` (mode 0600
   checked), never argv or env; `--network`, `--node host:port`, `--birthday <height|tip|taproot>`;
@@ -480,7 +482,8 @@ build `dev` in the UI and diagnostics.
   scan supervision, status, Connect, auth and the Electrum front; M1 adds the Umbrel widget,
   diagnostics, upgrade backup, last-known-good restore and the Advanced escape hatches.
 - New blindbit-rs tickets: BR13 switch off the HTTP API (unauthenticated `/subscribe` on
-  loopback); BR14 persisted-checkpoint acknowledgement with write-failure propagation.
+  loopback; done: SNB-668 removed the API); BR14 persisted-checkpoint acknowledgement with
+  write-failure propagation.
 <!-- /autoplan-accepted:eng -->
 ## Review record
 

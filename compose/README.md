@@ -72,7 +72,7 @@ container; any other `FRIGLET_*` variable there is a startup error by design.
 | 50031 | Electrum, plaintext. Anyone who can reach it can read this wallet's history |
 | 50032 | Electrum, TLS with a self-signed certificate; the Connect page shows its fingerprint |
 
-friglet's own HTTP API (8095) and Electrum (50001) stay on loopback inside the container.
+friglet's own Electrum server (50001) stays on loopback inside the container.
 All state lives in the `friglet-data` volume at `/data`: config, the scan key (mode 0600),
 scanner state, TLS certificate and the UI password hash. `docker compose down` keeps it;
 `docker compose down -v` deletes it, the scan key included. friglet logs contain txids,

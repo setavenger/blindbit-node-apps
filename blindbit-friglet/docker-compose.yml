@@ -9,7 +9,7 @@ services:
   friglet-node:
     # friglet-node pin: the tag and its multi-arch index digest are rewritten together by the
     # pin script. The all-zero digest is a PLACEHOLDER until the first image is published.
-    image: ghcr.io/setavenger/friglet-node:93f6a92-1@sha256:0000000000000000000000000000000000000000000000000000000000000000
+    image: ghcr.io/setavenger/friglet-node:5dbb16f-1@sha256:0000000000000000000000000000000000000000000000000000000000000000
     user: "1000:1000"
     restart: on-failure
     # friglet-ui waits up to 120 s for friglet to stop cleanly (docs/contract.md).

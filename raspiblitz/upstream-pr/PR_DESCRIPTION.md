@@ -91,7 +91,6 @@ from starting. `on` refuses if another whitebind already uses 8337.
 | 8098 | nginx, ufw LAN | web UI over HTTPS |
 | 50031 | 127.0.0.1 (LAN with `lan-tcp`) | Electrum plaintext, onion port 50031 |
 | 50032 | 0.0.0.0, ufw LAN | Electrum TLS |
-| 8095 | 127.0.0.1 | friglet HTTP API, never exposed |
 | 8337 | 127.0.0.1 | bitcoind whitebind (download) for friglet |
 
 **Files touched besides the new script:** `_provision_.sh`, `00settingsMenuServices.sh`

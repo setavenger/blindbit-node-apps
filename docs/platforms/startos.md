@@ -111,7 +111,7 @@ reach the Electrum port can read this wallet's history, so only add addresses yo
 | 8097/tcp | container | friglet-ui (HTTP, own password login); off the box through the StartOS HTTPS proxy |
 | 50031/tcp | container, bridge only | plaintext Electrum from friglet-ui; StartOS terminates TLS in front of it |
 | assigned at install (prefers 50032) | LAN / onion / domain | Electrum over SSL, the address wallets use |
-| 127.0.0.1:50001, 127.0.0.1:8095 | inside the container | friglet's own Electrum and HTTP API, never exposed |
+| 127.0.0.1:50001 | inside the container | friglet's own Electrum, never exposed |
 | bitcoind `peer-local` (container port 58334) | bridge | whitelisted P2P the package resolves at start (`FRIGLET_UI_NODE`) |
 | 443/tcp outbound | internet | BlindBit oracle |
 

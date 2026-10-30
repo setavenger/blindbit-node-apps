@@ -2,7 +2,7 @@ import { IMPOSSIBLE, VersionInfo } from '@start9labs/start-sdk'
 
 // friglet has no release tags yet (BR11). The upstream part is friglet's crate
 // version at the pinned blindbit-rs commit (versions.env: BLINDBIT_RS_REV
-// 93f6a92…, friglet/Cargo.toml 0.1.0); the image tag in manifest/image.ts
+// 5dbb16f…, friglet/Cargo.toml 0.1.0); the image tag in manifest/image.ts
 // carries the commit. Bump the downstream revision for packaging-only changes.
 export const current = VersionInfo.of({
   version: '0.1.0:0',

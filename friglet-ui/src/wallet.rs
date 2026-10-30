@@ -197,11 +197,14 @@ fn replace_prev_with(dd: &DataDir, tmp: &std::path::Path) -> io::Result<()> {
     files::fsync_dir(dd.root())
 }
 
-/// Remove the live wallet's scanner state so friglet starts fresh.
+/// Remove the live wallet's scanner state so friglet starts fresh. friglet's sidecars go too:
+/// they belong to the state file's wallet, and its name does not change with the wallet.
 fn remove_state_files(dd: &DataDir) -> io::Result<()> {
     for name in [
         files::STATE_FILE,
         files::HEADERS_FILE,
+        files::BIRTHDAY_FILE,
+        files::PENDING_FILE,
         files::LKG_FILE,
         files::CONFIG_FILE,
     ] {
@@ -477,21 +480,29 @@ pub fn render_friglet_config(
     oracle_url: &str,
     peer: SocketAddr,
 ) -> Result<String, String> {
+    // Every field is listed (no `..Default::default()`), so a field friglet adds fails the
+    // build at the next re-pin and gets a deliberate value here.
     let cfg = friglet_ipc::DaemonConfig {
         network: meta.network.as_str().to_string(),
         oracle_url: oracle_url.to_string(),
         p2p_node_addr: Some(peer.to_string()),
         start_height: Some(meta.birthday_height),
+        // The birthday is friglet-ui's (wallet.json, set at setup) and always passed as
+        // `start_height`; friglet must not pick the oracle tip or rewrite this file.
+        start_at_tip: false,
         spend_pubkey: Some(meta.spend_pubkey.clone()),
         max_label_num: 0,
-        http_addr: crate::FRIGLET_HTTP_ADDR.to_string(),
+        // Ignored by friglet since its HTTP API was removed (SNB-668); not written below.
+        http_addr: String::new(),
         electrum_addr: crate::FRIGLET_ELECTRUM_ADDR.to_string(),
         state_file: dd.state(),
         log_level: "info".to_string(),
         key_file: Some(dd.key()),
         control_socket: Some(dd.friglet_socket().to_string_lossy().into_owned()),
     };
-    toml::to_string_pretty(&cfg).map_err(|e| e.to_string())
+    let mut table = toml::Table::try_from(&cfg).map_err(|e| e.to_string())?;
+    table.remove("http_addr");
+    toml::to_string_pretty(&table).map_err(|e| e.to_string())
 }
 
 /// The fields of friglet's state file friglet-ui reads (it embeds the scan secret; never
@@ -611,9 +622,19 @@ mod tests {
         stage(&dd, &a, Network::Signet, 100, TxKind::Setup, false).unwrap();
         commit(&dd).unwrap();
         files::write_atomic(&dd.state(), b"{\"last_scanned_block_height\":150}").unwrap();
+        // friglet's sidecars of wallet a: its birthday record and a broadcast of its own.
+        files::write_atomic(&dd.path(files::BIRTHDAY_FILE), b"{\"start_height\":100}").unwrap();
+        files::write_atomic(&dd.path(files::PENDING_FILE), b"{\"aa\":{}}").unwrap();
 
         stage(&dd, &b, Network::Signet, 200, TxKind::Replace, false).unwrap();
         assert!(!dd.state().exists(), "new wallet starts from a fresh state");
+        for name in [files::BIRTHDAY_FILE, files::PENDING_FILE] {
+            assert!(!dd.path(name).exists(), "{name} of wallet a is not b's");
+            assert!(
+                dd.prev().join(name).exists(),
+                "{name} is kept with wallet a"
+            );
+        }
         assert!(dd.prev().join(files::STATE_FILE).exists());
         assert_eq!(
             load_keys(&dd).unwrap().unwrap().0.identity(Network::Signet),
@@ -632,6 +653,11 @@ mod tests {
             a.identity(Network::Signet)
         );
         assert!(dd.state().exists(), "restore brings the old state back");
+        assert_eq!(
+            fs::read(dd.path(files::PENDING_FILE)).unwrap(),
+            b"{\"aa\":{}}",
+            "and its unconfirmed broadcasts"
+        );
         // ...and the replaced wallet is now the previous one.
         let prev_meta: WalletMeta = files::read_json(&dd.prev().join(files::WALLET_FILE))
             .unwrap()
@@ -758,11 +784,13 @@ mod tests {
             "10.0.0.1:38333".parse().unwrap(),
         )
         .unwrap();
+        assert!(!toml.contains("http_addr"), "{toml}");
+        assert!(!toml.contains("start_at_tip"), "{toml}");
         let cfg: friglet_ipc::DaemonConfig = toml::from_str(&toml).unwrap();
         assert_eq!(cfg.network, "signet");
         assert_eq!(cfg.electrum_addr, "127.0.0.1:50001");
-        assert_eq!(cfg.http_addr, "127.0.0.1:8095");
         assert_eq!(cfg.start_height, Some(270_000));
+        assert!(!cfg.start_at_tip);
         assert_eq!(cfg.p2p_node_addr.as_deref(), Some("10.0.0.1:38333"));
         assert_eq!(cfg.state_file, dd.state());
         assert_eq!(cfg.key_file, Some(dd.key()));

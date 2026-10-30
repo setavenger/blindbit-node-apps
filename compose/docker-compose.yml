@@ -9,7 +9,7 @@ name: friglet-node
 services:
   friglet-node:
     # Default generated from versions.env by scripts/update-pins.sh.
-    image: ${FRIGLET_NODE_IMAGE:-ghcr.io/setavenger/friglet-node:93f6a92-1}
+    image: ${FRIGLET_NODE_IMAGE:-ghcr.io/setavenger/friglet-node:5dbb16f-1}
     restart: unless-stopped
     environment:
       FRIGLET_UI_PLATFORM: compose
