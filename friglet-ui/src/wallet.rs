@@ -197,18 +197,31 @@ fn replace_prev_with(dd: &DataDir, tmp: &std::path::Path) -> io::Result<()> {
     files::fsync_dir(dd.root())
 }
 
-/// Remove the live wallet's scanner state so friglet starts fresh. friglet's sidecars go too:
-/// they belong to the state file's wallet, and its name does not change with the wallet.
+/// Remove the live wallet's scanner state so friglet starts fresh. friglet's sidecars and the
+/// state it set aside go too: they belong to the old wallet (the names do not change with the
+/// wallet), and the set-aside copies embed its scan secret.
 fn remove_state_files(dd: &DataDir) -> io::Result<()> {
-    for name in [
+    let names = [
         files::STATE_FILE,
         files::HEADERS_FILE,
         files::BIRTHDAY_FILE,
         files::PENDING_FILE,
+        files::STATE_BACKUP_FILE,
         files::LKG_FILE,
         files::CONFIG_FILE,
-    ] {
+    ];
+    for name in names.into_iter().chain(files::FRIGLET_TMP_FILES) {
         files::remove_if_exists(&dd.path(name))?;
+    }
+    for entry in fs::read_dir(dd.root())? {
+        let entry = entry?;
+        if entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with(files::UNREADABLE_STATE_PREFIX)
+        {
+            files::remove_if_exists(&entry.path())?;
+        }
     }
     files::fsync_dir(dd.root())
 }
@@ -625,6 +638,14 @@ mod tests {
         // friglet's sidecars of wallet a: its birthday record and a broadcast of its own.
         files::write_atomic(&dd.path(files::BIRTHDAY_FILE), b"{\"start_height\":100}").unwrap();
         files::write_atomic(&dd.path(files::PENDING_FILE), b"{\"aa\":{}}").unwrap();
+        // ...and state friglet set aside, which embeds a's scan secret.
+        let set_aside = [
+            files::STATE_BACKUP_FILE,
+            "scanner_state.json.unreadable-1790000000",
+        ];
+        for name in set_aside {
+            files::write_atomic(&dd.path(name), a.scan_secret_hex().as_bytes()).unwrap();
+        }
 
         stage(&dd, &b, Network::Signet, 200, TxKind::Replace, false).unwrap();
         assert!(!dd.state().exists(), "new wallet starts from a fresh state");
@@ -634,6 +655,9 @@ mod tests {
                 dd.prev().join(name).exists(),
                 "{name} is kept with wallet a"
             );
+        }
+        for name in set_aside {
+            assert!(!dd.path(name).exists(), "{name} is removed with a's state");
         }
         assert!(dd.prev().join(files::STATE_FILE).exists());
         assert_eq!(

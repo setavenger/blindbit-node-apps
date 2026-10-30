@@ -90,21 +90,8 @@ pub fn classify_line(line: &str) -> Option<LogCondition> {
     // One line per failed download attempt: `height=N … failure=<FetchFailure>`.
     if line.contains("block fetch attempt failed") {
         let failure = line.split_once("failure=").map_or("", |(_, f)| f);
-        let kind = if [
-            "cannot connect",
-            "handshake failed",
-            "peer is a",
-            "peer does not speak",
-        ]
-        .iter()
-        .any(|n| failure.starts_with(n))
-        {
-            P2pTrouble::Connect
-        } else {
-            P2pTrouble::BlockUnavailable
-        };
         return Some(LogCondition::P2p {
-            kind,
+            kind: p2p_trouble(failure),
             height: field_u64(line, "height="),
         });
     }
@@ -121,21 +108,37 @@ pub fn classify_line(line: &str) -> Option<LogCondition> {
         }
         // The node did not deliver a block (blindbit-lib `BlockFetchError`):
         // `cannot get block N (<hash>) from your node <peer>: <why>`.
-        let kind = if line.contains(": cannot connect (")
-            || line.contains("handshake failed")
-            || line.contains("Connection refused")
-            || line.contains("connection timed out")
-            || line.contains("No route to host")
-            || line.contains("Network is unreachable")
-        {
-            P2pTrouble::Connect
-        } else {
-            P2pTrouble::BlockUnavailable
-        };
-        let height = field_u64(line, "cannot get block ");
-        return Some(LogCondition::P2p { kind, height });
+        let error = line.split_once("error=").map_or(line, |(_, e)| e);
+        return Some(LogCondition::P2p {
+            kind: p2p_trouble(error),
+            height: field_u64(line, "cannot get block "),
+        });
     }
     None
+}
+
+/// Whether blindbit-lib's text for a failed block download (a `FetchFailure` or the final
+/// `BlockFetchError`) says the peer cannot be used at all (no connection, no handshake, the
+/// wrong network) rather than that it does not deliver this block.
+fn p2p_trouble(text: &str) -> P2pTrouble {
+    let peer_unusable = [
+        "cannot connect",
+        "handshake failed",
+        "during the handshake",
+        // wrong network: `peer is a testnet node` / `it is a testnet node, but friglet scans`
+        "peer is a ",
+        "but friglet scans",
+        "does not speak",
+        "Connection refused",
+        "connection timed out",
+        "No route to host",
+        "Network is unreachable",
+    ];
+    if peer_unusable.iter().any(|n| text.contains(n)) {
+        P2pTrouble::Connect
+    } else {
+        P2pTrouble::BlockUnavailable
+    }
 }
 
 /// Map a P2P condition to a failure using what the handshake knows about the node.
@@ -157,12 +160,18 @@ pub fn p2p_failure(
     }
 }
 
-/// Classify `GetStatus.last_error` (not filled at the pin; kept for BR4).
+/// Classify `GetStatus.last_error` (set when friglet's scan task ends with an error).
 pub fn classify_last_error(err: &str) -> Failure {
+    if err.contains("cannot get block ") {
+        return match p2p_trouble(err) {
+            P2pTrouble::Connect => Failure::PeerUnreachable,
+            P2pTrouble::BlockUnavailable => Failure::NodeSyncing,
+        };
+    }
     let e = err.to_ascii_lowercase();
     if e.contains("oracle") || e.contains("transport error") || e.contains("status {") {
         Failure::OracleDropped
-    } else if e.contains("notfound") || e.contains("gave up waiting") || e.contains("peer closed") {
+    } else if e.contains("notfound") {
         Failure::NodeSyncing
     } else if e.contains("p2p") || e.contains("connection refused") || e.contains("peer") {
         Failure::PeerUnreachable
@@ -200,6 +209,10 @@ mod tests {
     const NOTFOUND: &str = "2026-10-01T12:00:00.000000Z  WARN block fetch attempt failed peer=10.0.0.1:8333 height=900100 block_hash=00 attempt=1 max_attempts=4 failure=peer answered notfound";
     const GAVE_UP: &str = "2026-10-01T12:00:00.000000Z ERROR scan_block_range failed, will retry on next poll error=cannot get block 900100 (00) from your node 10.0.0.1:8333: the node did not send the block within 1 min 30 s and gave no reason, which is what Bitcoin Core does for a block it does not have. It is probably pruned below this height or not fully synced. Scanning needs an unpruned (prune=0), fully synced bitcoin node.";
     const CONNECT_GAVE_UP: &str = "2026-10-01T12:00:00.000000Z ERROR scan_block_range failed, will retry on next poll error=cannot get block 900100 (00) from your node 10.0.0.1:8333: cannot connect (Connection refused (os error 111)) (all 4 tries). Check that bitcoind is running and accepts P2P connections on that address (listen=1, and bind= if set), that no firewall blocks it, and that p2p_node_addr is right (the bitcoin P2P port is usually 8333).";
+    const WRONG_NETWORK_ATTEMPT: &str = "2026-10-01T12:00:00.000000Z  WARN block fetch attempt failed peer=10.0.0.1:18333 height=900100 block_hash=00 attempt=1 max_attempts=4 failure=peer is a testnet node";
+    const WRONG_NETWORK: &str = "2026-10-01T12:00:00.000000Z ERROR scan_block_range failed, will retry on next poll error=cannot get block 900100 (00) from your node 10.0.0.1:18333: it is a testnet node, but friglet scans bitcoin. Point p2p_node_addr at a bitcoin node (P2P port usually 8333).";
+    const HANDSHAKE_CLOSED_ATTEMPT: &str = "2026-10-01T12:00:00.000000Z  WARN block fetch attempt failed peer=10.0.0.1:8333 height=900100 block_hash=00 attempt=1 max_attempts=4 failure=peer closed the connection 12 ms after connecting, during the handshake";
+    const HANDSHAKE_CLOSED: &str = "2026-10-01T12:00:00.000000Z ERROR scan_block_range failed, will retry on next poll error=cannot get block 900100 (00) from your node 10.0.0.1:8333: the node closed the connection during the handshake (all 4 tries). Bitcoin Core does that to peers of another network, to banned addresses, and when its inbound slots are full and no peer can be evicted.";
     const ORACLE_STREAM_STOPPED: &str = "2026-10-01T12:00:00.000000Z ERROR scan_block_range failed, will retry on next poll error=scan stopped at height 900100: oracle stream error Unknown: h2 protocol error; nothing from height 900100 on was scanned, rescan from height 900100";
     const PROGRESS: &str = "2026-10-01T12:00:00.000000Z  INFO scan progress height=900100 scanned=100 total=200 pct=50";
 
@@ -221,7 +234,7 @@ mod tests {
         );
         assert_eq!(
             classify_exit(
-                ExitKind::Code(0),
+                ExitKind::Code(1),
                 &lines(&[
                     ELECTRUM_PORT_TAKEN,
                     "2026-10-01T12:00:00.000000Z ERROR friglet exited with an error: Electrum server stopped"
@@ -295,6 +308,25 @@ mod tests {
             classify_line(ORACLE_STREAM_STOPPED),
             Some(LogCondition::OracleRetrying)
         );
+        // A node of another network, or one that drops friglet during the handshake, is
+        // unusable, not short of a block.
+        for line in [
+            WRONG_NETWORK_ATTEMPT,
+            WRONG_NETWORK,
+            HANDSHAKE_CLOSED_ATTEMPT,
+            HANDSHAKE_CLOSED,
+        ] {
+            assert!(
+                matches!(
+                    classify_line(line),
+                    Some(LogCondition::P2p {
+                        kind: P2pTrouble::Connect,
+                        ..
+                    })
+                ),
+                "{line}"
+            );
+        }
         assert_eq!(
             classify_line(
                 "2026-10-01T12:00:00.000000Z  INFO control socket listening path=/data/friglet.sock"
@@ -339,5 +371,16 @@ mod tests {
             Failure::PeerUnreachable
         );
         assert_eq!(classify_last_error("something"), Failure::ScanStopped);
+        // blindbit-lib's final download error names p2p_node_addr either way.
+        let error = |line: &str| line.split_once("error=").unwrap().1.to_string();
+        assert_eq!(classify_last_error(&error(GAVE_UP)), Failure::NodeSyncing);
+        assert_eq!(
+            classify_last_error(&error(CONNECT_GAVE_UP)),
+            Failure::PeerUnreachable
+        );
+        assert_eq!(
+            classify_last_error(&error(ORACLE_STREAM_STOPPED)),
+            Failure::OracleDropped
+        );
     }
 }

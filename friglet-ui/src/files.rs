@@ -24,8 +24,13 @@ pub const BIRTHDAY_FILE: &str = "scanner_state.birthday.json";
 /// Transactions broadcast through friglet's Electrum server, until they confirm
 /// (`with_extension("pending.json")`).
 pub const PENDING_FILE: &str = "scanner_state.pending.json";
+/// Where friglet moves the state aside when the birthday moves back (embeds the scan secret).
+pub const STATE_BACKUP_FILE: &str = "scanner_state.json.bak";
 /// Where friglet moves a state file it could not restore (embeds the scan secret).
 pub const UNREADABLE_STATE_PREFIX: &str = "scanner_state.json.unreadable-";
+/// friglet's temp files while it replaces the state and pending files.
+pub const FRIGLET_TMP_FILES: [&str; 2] =
+    ["scanner_state.json.tmp", "scanner_state.pending.json.tmp"];
 pub const LKG_FILE: &str = "scanner_state.json.lkg";
 pub const UPGRADE_BACKUP_PREFIX: &str = "scanner_state.json.upgrade-";
 pub const WALLET_FILE: &str = "wallet.json";
@@ -181,15 +186,15 @@ impl DataDir {
             (BIRTHDAY_FILE, "friglet birthday record"),
             (PENDING_FILE, "friglet unconfirmed broadcasts"),
             (
-                "scanner_state.pending.json.tmp",
-                "friglet unconfirmed broadcasts temp file",
-            ),
-            (
-                "scanner_state.json.tmp",
+                FRIGLET_TMP_FILES[0],
                 "friglet scanner state temp file (embeds the scan secret)",
             ),
             (
-                "scanner_state.json.bak",
+                FRIGLET_TMP_FILES[1],
+                "friglet unconfirmed broadcasts temp file",
+            ),
+            (
+                STATE_BACKUP_FILE,
                 "scanner state set aside for a rescan (embeds the scan secret)",
             ),
             (LKG_FILE, "last-known-good scanner state"),
