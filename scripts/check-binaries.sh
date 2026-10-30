@@ -28,10 +28,15 @@ readelf_() {
 version_le() { [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -n1)" = "$1" ]; }
 
 # can_run ARCH: this host runs linux/ARCH containers; when not, $why holds docker's answer.
-# The ARCH variant is pulled first: with Docker's classic image store (CI), the amd64 copy
-# already pulled under the same digest makes `docker run --platform linux/arm64` fail instead
-# of pulling.
+# The ARCH variant is pulled first. Docker's classic image store (CI) keeps one image per
+# reference: with the amd64 copy of RUNTIME_IMAGE present, `docker run --platform linux/arm64`
+# fails and a pull answers "cannot overwrite digest", so another platform's copy goes first.
 can_run() {
+  local have
+  have=$(docker image inspect --format '{{.Architecture}}' "$RUNTIME_IMAGE" 2>/dev/null) || have=
+  if [ -n "$have" ] && [ "$have" != "$1" ]; then
+    docker image rm "$RUNTIME_IMAGE" >/dev/null 2>&1 || true
+  fi
   why=$(docker pull -q --platform "linux/$1" "$RUNTIME_IMAGE" 2>&1) &&
     why=$(docker run --rm --platform "linux/$1" "$RUNTIME_IMAGE" true 2>&1)
 }
